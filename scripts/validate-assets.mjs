@@ -2,6 +2,7 @@
 import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { pngSize } from "./png-size.mjs";
 import { syncLegacySvg } from "./sync-legacy-svg.mjs";
 import { assertVendoredFonts } from "./render-svg.mjs";
 
@@ -233,7 +234,21 @@ export async function validateAssets() {
 
   for (const theme of ["dark", "light"]) {
     const path = `src/og-image/${theme}/og-default.png`;
-    if (!(await exists(join(ROOT, path)))) errors.push(`missing ${path}`);
+    const full = join(ROOT, path);
+    if (!(await exists(full))) {
+      errors.push(`missing ${path}`);
+      continue;
+    }
+    try {
+      const size = pngSize(await readFile(full));
+      if (size.width !== 1200 || size.height !== 630) {
+        errors.push(
+          `${path}: expected 1200×630, got ${size.width}×${size.height}`,
+        );
+      }
+    } catch (e) {
+      errors.push(`${path}: ${e.message}`);
+    }
   }
 
   for (const dir of [

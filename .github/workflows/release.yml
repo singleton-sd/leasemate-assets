@@ -88,6 +88,8 @@ jobs:
           app-id: ${{ vars.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
           owner: singleton-sd
+          repositories: leasemate-assets
+          permission-contents: write
 
       - name: Configure git identity as the App bot
         env:

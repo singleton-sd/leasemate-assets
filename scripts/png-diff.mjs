@@ -2,7 +2,7 @@ import sharp from "sharp";
 
 /**
  * Pixel-compare two PNG buffers after decoding to 8-bit RGBA.
- * A pixel counts as different when any RGB channel exceeds `channelThreshold`.
+ * A pixel counts as different when any RGBA channel exceeds `channelThreshold`.
  *
  * @param {Buffer} a
  * @param {Buffer} b
@@ -25,15 +25,15 @@ export async function diffPngBuffers(a, b, { channelThreshold = 16 } = {}) {
   const { width, height, channels } = left.info;
   const da = left.data;
   const db = right.data;
-  if (da.length !== db.length) {
-    throw new Error("decoded buffer length mismatch");
+  if (da.length !== db.length || channels !== 4) {
+    throw new Error("decoded buffer length or channel mismatch");
   }
   const pixels = width * height;
   let differing = 0;
   let sumAbs = 0;
   for (let i = 0; i < da.length; i += channels) {
     let maxCh = 0;
-    for (let c = 0; c < 3; c++) {
+    for (let c = 0; c < channels; c++) {
       const d = Math.abs(da[i + c] - db[i + c]);
       sumAbs += d;
       if (d > maxCh) maxCh = d;
@@ -46,7 +46,7 @@ export async function diffPngBuffers(a, b, { channelThreshold = 16 } = {}) {
     pixels,
     differing,
     percent: (differing / pixels) * 100,
-    meanAbs: sumAbs / (pixels * 3),
+    meanAbs: sumAbs / (pixels * channels),
   };
 }
 

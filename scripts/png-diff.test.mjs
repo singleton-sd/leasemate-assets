@@ -47,7 +47,19 @@ test("diffPngBuffers rejects a same-size unrelated image", async () => {
   const white = await solidPng(8, 8, { r: 255, g: 255, b: 255 });
   const diff = await diffPngBuffers(black, white);
   assert.equal(diff.percent, 100);
-  assert.equal(diff.meanAbs, 255);
+  assert.equal(diff.meanAbs, (255 * 3) / 4);
+  assert.throws(
+    () => assertPngWithinTolerance(diff, { maxPercent: MAX_PERCENT, maxMeanAbs: MAX_MEAN_ABS }),
+    /exceeds/,
+  );
+});
+
+test("diffPngBuffers rejects a same-RGB image whose alpha differs", async () => {
+  const opaque = await solidPng(8, 8, { r: 0, g: 0, b: 0, alpha: 1 });
+  const clear = await solidPng(8, 8, { r: 0, g: 0, b: 0, alpha: 0 });
+  const diff = await diffPngBuffers(opaque, clear);
+  assert.equal(diff.percent, 100);
+  assert.equal(diff.meanAbs, 255 / 4);
   assert.throws(
     () => assertPngWithinTolerance(diff, { maxPercent: MAX_PERCENT, maxMeanAbs: MAX_MEAN_ABS }),
     /exceeds/,
