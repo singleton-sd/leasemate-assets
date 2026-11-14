@@ -80,7 +80,9 @@ pnpm build   # writes dist/ (gitignored)
 Requires Node 22 (`.nvmrc`) and pnpm 11 (`packageManager` field).
 
 Release (CI only): `pnpm release:ci` via `.github/workflows/release.yml`.
-Local dry-run: `pnpm release`.
+The push uses the singleton-release GitHub App (`vars.RELEASE_APP_ID` +
+`secrets.RELEASE_APP_PRIVATE_KEY`). Do not use `GITHUB_TOKEN` or a PAT.
+Local dry-run: `pnpm release`. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Layout
 

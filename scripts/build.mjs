@@ -23,7 +23,7 @@ const ICON_SIZES = [16, 32, 48, 64, 128, 180, 192, 256, 512, 1024];
 const CI = process.env.CI === "true";
 const LOCKUP_WIDTHS = CI ? [840, 1280] : [840, 1280, 2560];
 
-const NAMED_RASTERS = [
+export const NAMED_RASTERS = [
   { svg: "src/logo/sources/dark.svg", file: "leasemate-icon-dark-512.png", width: 512, height: 512 },
   { svg: "src/logo/sources/light.svg", file: "leasemate-icon-light-512.png", width: 512, height: 512 },
   { svg: "src/logo/sources/mono-black.svg", file: "leasemate-mono-black-512.png", width: 512, height: 512 },

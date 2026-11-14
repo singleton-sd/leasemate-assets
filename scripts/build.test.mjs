@@ -41,6 +41,9 @@ test("selectApprovedOrGenerated keeps a matching approved PNG", () => {
   assert.equal(out, PNG_1X1);
 });
 
+// Same-size wrong pixels are caught by scripts/png-diff.test.mjs (this helper
+// only checks IHDR dimensions).
+
 test("selectApprovedOrGenerated keeps generated when approved PNG is truncated", () => {
   const generated = Buffer.from("generated-valid");
   const truncated = PNG_1X1.subarray(0, 24);

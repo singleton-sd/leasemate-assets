@@ -32,7 +32,7 @@
     "package": "@singleton-sd/tokens",
     "version": "1.5.0",
     "source": "gitlab.com/singleton-sd/design-system/tokens",
-    "note": "Authoritative semantic ids for product yellows/grays. SVG masters keep baked hex and do not import the package at runtime. LeaseMate uses only Singleton gold/yellow, black, white and grays — no product accent."
+    "note": "Authoritative semantic ids for product yellows/grays. SVG masters keep baked hex and do not import the package at runtime. LeaseMate uses Singleton gold/yellow plus neutrals (black, white, grays) — no product accent. Link (#8E5C00) and focus (gray-900) in ui arrive in tokens 1.7.0 (pending)."
   },
   "colors": {
     "yellowDark500": {
@@ -85,7 +85,7 @@
     "lightPrimaryHover": "#B57F00",
     "lightPrimaryPressed": "#A36F00",
     "link": "#8E5C00",
-    "note": "Never use gold as text on white. Focus is gray-900 (design-system tokens)."
+    "note": "Never use gold as text on white. Link and focus hexes arrive in tokens 1.7.0 (pending)."
   },
   "designSource": "LeaseMate brand overlay — house icon (56-unit grid) + Open Sauce Sans lockup, Singleton gold/black only"
 }

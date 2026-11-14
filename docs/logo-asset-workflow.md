@@ -43,4 +43,7 @@ https://cdn.jsdelivr.net/gh/singleton-sd/leasemate-assets@<sha>/svg/leasemate-ic
 
 Pages CDN is primary for HTML consumers. `@singleton-sd/leasemate-assets`
 publishes via GitHub Actions Trusted Publishing (OIDC) —
-`.github/workflows/release.yml` / `pnpm release:ci`. Do not add `NPM_TOKEN`.
+`.github/workflows/release.yml` / `pnpm release:ci`. The git push uses the
+singleton-release GitHub App (`vars.RELEASE_APP_ID` +
+`secrets.RELEASE_APP_PRIVATE_KEY`). Do not use `GITHUB_TOKEN` or a PAT for
+that push. Do not add `NPM_TOKEN`.
