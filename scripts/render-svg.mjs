@@ -6,7 +6,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Resvg } from "@resvg/resvg-js";
 
@@ -114,7 +114,7 @@ export function assertFontBuffer(buf, spec) {
 
 export function assertVendoredFonts() {
   for (const file of FONT_FILES) {
-    const name = file.split("/").pop();
+    const name = basename(file);
     const sha256 = FONT_SHA256[name];
     if (!sha256) throw new Error(`no pinned checksum for ${name}`);
     const buf = readFileSync(file);

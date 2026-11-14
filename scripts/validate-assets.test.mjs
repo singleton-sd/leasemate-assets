@@ -76,14 +76,23 @@ test("assertSvgSafe rejects namespace-prefixed script elements", () => {
   );
 });
 
-test("assertSvgSafe rejects javascript: href", () => {
-  const evil = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
-  <a href="javascript:alert(1)"><rect width="10" height="10"/></a>
-</svg>`;
-  assert.throws(
-    () => assertSvgSafe(evil, "fixture.svg"),
-    /executable URI schemes are not allowed/,
-  );
+test("assertSvgSafe rejects javascript: href variants", () => {
+  const wrap = (href) =>
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><a href="${href}"><rect width="10" height="10"/></a></svg>`;
+  const cases = [
+    `javascript:alert(1)`,
+    `javascript:alert('1')`,
+    `javascript&#58;alert(1)`,
+    `&#x6A;avascript:alert(1)`,
+    `java&#x09;script:alert(1)`,
+  ];
+  for (const href of cases) {
+    assert.throws(
+      () => assertSvgSafe(wrap(href), "fixture.svg"),
+      /executable URI schemes are not allowed/,
+      href,
+    );
+  }
 });
 
 test("assertSingletonPalette rejects non-Singleton accents", () => {

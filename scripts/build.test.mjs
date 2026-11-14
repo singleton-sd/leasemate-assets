@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { selectApprovedOrGenerated } from "./build.mjs";
-import { pngSize } from "./png-size.mjs";
+import { isCompletePng, pngSize } from "./png-size.mjs";
 
 /** 1×1 opaque black PNG */
 const PNG_1X1 = Buffer.from(
@@ -39,4 +39,20 @@ test("selectApprovedOrGenerated keeps a matching approved PNG", () => {
   });
   assert.equal(source, "approved");
   assert.equal(out, PNG_1X1);
+});
+
+test("selectApprovedOrGenerated keeps generated when approved PNG is truncated", () => {
+  const generated = Buffer.from("generated-valid");
+  const truncated = PNG_1X1.subarray(0, 24);
+  assert.equal(isCompletePng(truncated), false);
+  assert.deepEqual(pngSize(truncated), { width: 1, height: 1 });
+  const { out, source } = selectApprovedOrGenerated({
+    generated,
+    approved: truncated,
+    width: 1,
+    height: 1,
+    file: "tiny.png",
+  });
+  assert.equal(source, "generated (approved PNG incomplete)");
+  assert.equal(out, generated);
 });

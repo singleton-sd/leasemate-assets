@@ -35,8 +35,27 @@ const ALLOWED_PAINT_KEYWORDS = new Set([
   "white",
 ]);
 
+const XML_ENTITY_VALUES = new Map([
+  ["amp", "&"],
+  ["apos", "'"],
+  ["colon", ":"],
+  ["gt", ">"],
+  ["lt", "<"],
+  ["quot", '"'],
+]);
+
 function decodeUriValue(raw) {
-  const unescaped = raw.replace(/&amp;/gi, "&").replace(/&colon;/gi, ":");
+  const unescaped = raw
+    .replace(/&(?:#x([0-9a-f]+)|#(\d+)|([a-z]+));/gi, (match, hex, dec, name) => {
+      if (name !== undefined) {
+        return XML_ENTITY_VALUES.get(name.toLowerCase()) ?? match;
+      }
+      const codePoint = hex !== undefined ? parseInt(hex, 16) : Number(dec);
+      return Number.isFinite(codePoint) && codePoint <= 0x10ffff
+        ? String.fromCodePoint(codePoint)
+        : match;
+    })
+    .replace(/[\t\n\r]/g, "");
   try {
     return decodeURIComponent(unescaped);
   } catch {
@@ -54,11 +73,11 @@ function assertSvgSafe(svg, path) {
   }
   const uriAttrs = [
     ...svg.matchAll(
-      /(?:href|src|xlink:href)\s*=\s*(["'])([^"']*)\1/gi,
+      /(?:href|src|xlink:href)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi,
     ),
   ];
   for (const m of uriAttrs) {
-    const value = decodeUriValue(m[2]).trim();
+    const value = decodeUriValue(m[1] ?? m[2]).trim();
     if (!value || value.startsWith("#")) continue;
     if (/^(javascript|vbscript|data):/i.test(value)) {
       throw new Error(`${path}: executable URI schemes are not allowed`);

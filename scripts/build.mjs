@@ -12,7 +12,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import toIco from "to-ico";
 import { renderSvgToPng } from "./render-svg.mjs";
-import { pngSize } from "./png-size.mjs";
+import { isCompletePng, pngSize } from "./png-size.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = join(ROOT, "dist");
@@ -176,6 +176,9 @@ export function selectApprovedOrGenerated({
 }) {
   if (!approved) {
     return { out: generated, source: "generated (no approved file)" };
+  }
+  if (!isCompletePng(approved)) {
+    return { out: generated, source: "generated (approved PNG incomplete)" };
   }
   const size = pngSize(approved);
   if (size.width !== width || size.height !== height) {
