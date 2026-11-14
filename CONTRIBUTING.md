@@ -35,8 +35,10 @@ The git push uses the **singleton-release** GitHub App
 (`vars.RELEASE_APP_ID` + `secrets.RELEASE_APP_PRIVATE_KEY`), which is on the
 default-branch ruleset bypass list. Do not use `GITHUB_TOKEN` or a PAT for
 that push — `GITHUB_TOKEN` cannot bypass the CodeRabbit required ruleset
-(GH013). Checkout and `pnpm install` stay unauthenticated; the App token is
-written into the origin URL only for the push.
+(GH013). Checkout, `pnpm install`, and validate/test/build/sync stay
+unauthenticated. The App token is written into `GITHUB_TOKEN`/`GH_TOKEN` and
+the origin URL only for the release-it step, then origin is reset. npm
+publish uses `--ignore-scripts` so `prepublishOnly` does not re-run.
 
 The job is skipped when the head commit message starts with `chore(release):`,
 so the release commit does not loop.

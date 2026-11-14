@@ -4,6 +4,10 @@
  * push uses the singleton-release GitHub App (ruleset bypass). Do not
  * use GITHUB_TOKEN or a PAT for that push.
  *
+ * Validate, test, build, and sync run in the workflow before the App
+ * token is minted. npm publish uses --ignore-scripts so lifecycle hooks
+ * (prepublishOnly) do not re-run dependency code with that token set.
+ *
  * @typedef {import('release-it').Config} ReleaseItConfig
  * @type {ReleaseItConfig}
  */
@@ -16,13 +20,12 @@ export default {
     commit: true,
     push: true,
     tag: true,
+    pushArgs: ["--follow-tags", "--atomic"],
   },
   npm: {
     publish: true,
     skipChecks: true, // required for OIDC — npm whoami fails without a static token
-  },
-  hooks: {
-    "before:release": "pnpm validate && pnpm test && pnpm build",
+    publishArgs: ["--ignore-scripts"],
   },
   github: {
     release: true,
