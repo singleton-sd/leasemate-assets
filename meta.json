@@ -1,0 +1,91 @@
+{
+  "package": "@singleton-sd/leasemate-assets",
+  "clearSpace": "mark-height",
+  "roles": ["lockup-horizontal", "lockup-stacked"],
+  "themes": ["light", "dark", "mono-black", "mono-white"],
+  "preferredVector": "svg",
+  "preferredRaster": "png",
+  "inventory": {
+    "mark": "src/logo/sources/",
+    "wordmark": "src/logo/wordmark/sources/{lockup-horizontal,lockup-stacked}/",
+    "og": "src/og-image/{light,dark}/",
+    "email": "src/email/",
+    "documents": "src/documents/",
+    "illustrations": "src/illustrations/",
+    "screenshots": "src/screenshots/",
+    "marketing": "src/marketing/",
+    "namedSvg": "svg/",
+    "namedPng": "png/"
+  },
+  "legacySvgRoot": "svg/",
+  "font": {
+    "family": "Open Sauce Sans",
+    "source": "https://github.com/marcologous/Open-Sauce-Fonts",
+    "license": "OFL-1.1",
+    "files": {
+      "500": "fonts/OpenSauceSans-Medium.ttf",
+      "600": "fonts/OpenSauceSans-SemiBold.ttf"
+    },
+    "usage": "Wordmark 500; BY SINGLETON SD caps line 600. Rasterizer must load these files and must not fall back to a system font."
+  },
+  "tokens": {
+    "package": "@singleton-sd/tokens",
+    "version": "1.5.0",
+    "source": "gitlab.com/singleton-sd/design-system/tokens",
+    "note": "Authoritative semantic ids for product yellows/grays. SVG masters keep baked hex and do not import the package at runtime. LeaseMate uses only Singleton gold/yellow, black, white and grays — no product accent."
+  },
+  "colors": {
+    "yellowDark500": {
+      "hex": "#FFB300",
+      "tokenId": "yellow-dark-500",
+      "cssVar": "--ssd-color-yellow-dark-500",
+      "usage": "primary mark on dark / black backgrounds"
+    },
+    "yellowLight500": {
+      "hex": "#C89200",
+      "tokenId": "yellow-light-500",
+      "cssVar": "--ssd-color-yellow-light-500",
+      "usage": "primary mark on light / white backgrounds"
+    },
+    "gray500": {
+      "hex": "#7F848A",
+      "tokenId": "gray-600",
+      "cssVar": "--ssd-color-gray-600",
+      "usage": "rooms on dark; BY SINGLETON SD caps; dark gray bar",
+      "note": "Legacy camelCase key gray500; hex matches tokens gray-600, not gray-500 (#9DA1A6)."
+    },
+    "gray300": {
+      "hex": "#C9CCD1",
+      "tokenId": "gray-300",
+      "cssVar": "--ssd-color-gray-300",
+      "usage": "muted gray accents on light themes (core Singleton token; not used in the mark itself)"
+    },
+    "grayLight500": {
+      "hex": "#9DA1A6",
+      "tokenId": "gray-500",
+      "cssVar": "--ssd-color-gray-500",
+      "usage": "rooms on light; light gray bar"
+    },
+    "black": {
+      "hex": "#000000",
+      "tokenId": "black",
+      "cssVar": "--ssd-color-black",
+      "usage": "dark backgrounds / mono ink"
+    },
+    "white": {
+      "hex": "#FFFFFF",
+      "tokenId": "white",
+      "cssVar": "--ssd-color-white",
+      "usage": "light backgrounds / mono paper"
+    }
+  },
+  "ui": {
+    "darkPrimaryFill": "#FFB300",
+    "lightPrimaryFill": "#C89200",
+    "lightPrimaryHover": "#B57F00",
+    "lightPrimaryPressed": "#A36F00",
+    "link": "#8E5C00",
+    "note": "Never use gold as text on white. Focus is gray-900 (design-system tokens)."
+  },
+  "designSource": "LeaseMate brand overlay — house icon (56-unit grid) + Open Sauce Sans lockup, Singleton gold/black only"
+}

@@ -1,0 +1,46 @@
+# Agent working agreements — LeaseMate assets
+
+Cross-agent instructions for work in `leasemate-assets`.
+
+## Scope
+
+This repo owns **LeaseMate product mark binaries** (SVG masters + generated
+favicons / rasters / OG). It is not the Singleton SD company assets package
+(`@singleton-sd/assets`). LeaseMate is a Singleton overlay: gold/yellow, black,
+white and grays only — no product accent colour.
+
+## Source of truth
+
+- Edit masters under `src/` only.
+- Do not hand-edit `dist/`.
+- Keep root `svg/` in sync with `src/` via `npm run sync:legacy-svg` (jsDelivr /
+  named-file compatibility until consumers move to Pages CDN).
+- Named raster handoff lives in `png/`. Rebuild with `pnpm build` (Open Sauce
+  Sans from `fonts/`; system fonts are disabled). If a generated PNG does not
+  match the approved file, the approved raster in `png/` wins.
+
+## Commits / PRs
+
+- Branch from latest `origin/main` in a dedicated worktree:
+  `feat/<issue>-<kebab-title>` (or `fix/` / `docs/`).
+- Prefer conventional commits with the GitHub issue: `feat: #1 …`.
+- Open a PR for human review; do not merge.
+
+## Build / verify
+
+```sh
+pnpm install
+pnpm validate
+pnpm test
+pnpm build
+```
+
+CI must leave `src/` and `svg/` unchanged (`git diff` clean after build).
+Releases use Trusted Publishing (OIDC) via `.github/workflows/release.yml`
+(`pnpm release:ci`) — no long-lived `NPM_TOKEN`.
+
+## Related
+
+- [BRAND.md](BRAND.md)
+- [docs/logo-asset-workflow.md](docs/logo-asset-workflow.md)
+- Company blueprint: `singleton-sd/design-system/assets`
