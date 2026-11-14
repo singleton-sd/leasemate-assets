@@ -71,6 +71,14 @@ function assertSvgSafe(svg, path) {
   if (/<\/?(?:[\w.-]+:)?script[\s>/]/i.test(svg) || /\son[a-z]+\s*=/i.test(svg)) {
     throw new Error(`${path}: scripts / event handlers are not allowed`);
   }
+  // Static marks do not animate. SMIL can assign href="javascript:…".
+  if (
+    /<\/?(?:[\w.-]+:)?(?:set|animate(?:Motion|Transform|Color)?)[\s>/]/i.test(
+      svg,
+    )
+  ) {
+    throw new Error(`${path}: SVG animation elements are not allowed`);
+  }
   const uriAttrs = [
     ...svg.matchAll(
       /(?:href|src|xlink:href)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi,

@@ -76,6 +76,19 @@ test("assertSvgSafe rejects namespace-prefixed script elements", () => {
   );
 });
 
+test("assertSvgSafe rejects animated href assignments", () => {
+  const evil = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+  <a href="#">
+    <set attributeName="href" to="javascript:alert(1)" begin="0s"/>
+    <rect width="10" height="10"/>
+  </a>
+</svg>`;
+  assert.throws(
+    () => assertSvgSafe(evil, "fixture.svg"),
+    /SVG animation elements are not allowed/,
+  );
+});
+
 test("assertSvgSafe rejects javascript: href variants", () => {
   const wrap = (href) =>
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><a href="${href}"><rect width="10" height="10"/></a></svg>`;
