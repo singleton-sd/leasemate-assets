@@ -24,6 +24,16 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Select release revision
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git remote set-url origin \
+            "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch origin main --tags
+          git checkout -B main origin/main
+
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
         with:
           version: 11.22.0
@@ -69,7 +79,5 @@ jobs:
           set -euo pipefail
           git remote set-url origin \
             "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
-          git fetch origin main --tags
-          git checkout -B main origin/main
           # Do not retry blindly: commit/tag may already exist if a later step failed.
           pnpm release:ci

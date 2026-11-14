@@ -42,14 +42,14 @@ Base: **https://assets.leasemate.poc.singletonsd.com**
 
 | Asset | URL |
 | --- | --- |
-| Favicon 32 | `…/favicons/favicon-32x32.png` |
-| Apple touch | `…/favicons/apple-touch-icon.png` |
-| Web manifest | `…/favicons/site.webmanifest` |
-| OG (dark) | `…/og-image/dark/og-default.png` |
-| Icon SVG (nav) | `…/svg/leasemate-icon-dark.svg` |
-| Lockup SVG (nav) | `…/svg/leasemate-lockup-on-dark-transparent.svg` |
-| Icon PNG 512 | `…/png/leasemate-icon-dark-512.png` |
-| OAuth 120 | `…/png/leasemate-oauth-120.png` |
+| Favicon 32 | `https://assets.leasemate.poc.singletonsd.com/favicons/favicon-32x32.png` |
+| Apple touch | `https://assets.leasemate.poc.singletonsd.com/favicons/apple-touch-icon.png` |
+| Web manifest | `https://assets.leasemate.poc.singletonsd.com/favicons/site.webmanifest` |
+| OG (dark) | `https://assets.leasemate.poc.singletonsd.com/og-image/dark/og-default.png` |
+| Icon SVG (nav) | `https://assets.leasemate.poc.singletonsd.com/svg/leasemate-icon-dark.svg` |
+| Lockup SVG (nav) | `https://assets.leasemate.poc.singletonsd.com/svg/leasemate-lockup-on-dark-transparent.svg` |
+| Icon PNG 512 | `https://assets.leasemate.poc.singletonsd.com/png/leasemate-icon-dark-512.png` |
+| OAuth 120 | `https://assets.leasemate.poc.singletonsd.com/png/leasemate-oauth-120.png` |
 
 DNS + Pages setup: [`docs/deployment.md`](docs/deployment.md).
 

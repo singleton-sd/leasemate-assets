@@ -12,6 +12,7 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import toIco from "to-ico";
 import { renderSvgToPng } from "./render-svg.mjs";
+import { pngSize } from "./png-size.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = join(ROOT, "dist");
@@ -161,6 +162,33 @@ async function buildWordmarks() {
   }
 }
 
+/**
+ * Prefer the approved raster when it matches the required pixel size.
+ * Wrong-size comps are rejected rather than published under the expected size.
+ * @param {{ generated: Buffer, approved?: Buffer, width: number, height: number, file: string }} args
+ */
+export function selectApprovedOrGenerated({
+  generated,
+  approved,
+  width,
+  height,
+  file,
+}) {
+  if (!approved) {
+    return { out: generated, source: "generated (no approved file)" };
+  }
+  const size = pngSize(approved);
+  if (size.width !== width || size.height !== height) {
+    throw new Error(
+      `${file}: approved PNG is ${size.width}×${size.height}, expected ${width}×${height}`,
+    );
+  }
+  if (approved.equals(generated)) {
+    return { out: generated, source: "generated" };
+  }
+  return { out: approved, source: "approved" };
+}
+
 async function buildNamedRasters() {
   const outDir = join(DIST, "png");
   await ensureDir(outDir);
@@ -173,19 +201,19 @@ async function buildNamedRasters() {
       height: spec.height,
     });
     const approvedPath = join(PNG, spec.file);
-    let out = generated;
-    let source = "generated";
+    let approved;
     try {
-      const approved = await readFile(approvedPath);
-      if (!approved.equals(generated)) {
-        // Approved comps win when the rasterizer cannot match them exactly
-        // (antialiasing / PNG encoder). Text still went through Open Sauce Sans.
-        out = approved;
-        source = "approved";
-      }
+      approved = await readFile(approvedPath);
     } catch {
-      source = "generated (no approved file)";
+      approved = undefined;
     }
+    const { out, source } = selectApprovedOrGenerated({
+      generated,
+      approved,
+      width: spec.width,
+      height: spec.height,
+      file: spec.file,
+    });
     await writePngBuf(out, join(outDir, spec.file));
     report.push(`${spec.file}: ${source} (${spec.width}×${spec.height})`);
   }
@@ -327,7 +355,12 @@ async function main() {
   for (const line of namedReport) console.log(`  ${line}`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+const isMain =
+  process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1];
+
+if (isMain) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

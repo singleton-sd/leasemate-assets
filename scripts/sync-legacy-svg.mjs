@@ -41,11 +41,15 @@ const MAP = [
   ],
 ];
 
-export async function syncLegacySvg({ checkOnly = false } = {}) {
+export async function syncLegacySvg({
+  checkOnly = false,
+  root = ROOT,
+  map = MAP,
+} = {}) {
   const mismatches = [];
-  for (const [from, to] of MAP) {
-    const src = await readFile(join(ROOT, from), "utf8");
-    const destPath = join(ROOT, to);
+  for (const [from, to] of map) {
+    const src = await readFile(join(root, from), "utf8");
+    const destPath = join(root, to);
     if (checkOnly) {
       let dest;
       try {

@@ -8,7 +8,8 @@ import {
 import { readFile } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { renderSvgToPng } from "../scripts/render-svg.mjs";
+import { renderSvgToPng } from "./render-svg.mjs";
+import sharp from "sharp";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -65,6 +66,26 @@ test("assertSvgSafe allows W3C xmlns without other URLs", () => {
   assert.doesNotThrow(() => assertSvgSafe(ok, "fixture.svg"));
 });
 
+test("assertSvgSafe rejects namespace-prefixed script elements", () => {
+  const evil = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:s="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+  <s:script>alert(1)</s:script>
+</svg>`;
+  assert.throws(
+    () => assertSvgSafe(evil, "fixture.svg"),
+    /scripts \/ event handlers are not allowed/,
+  );
+});
+
+test("assertSvgSafe rejects javascript: href", () => {
+  const evil = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+  <a href="javascript:alert(1)"><rect width="10" height="10"/></a>
+</svg>`;
+  assert.throws(
+    () => assertSvgSafe(evil, "fixture.svg"),
+    /executable URI schemes are not allowed/,
+  );
+});
+
 test("assertSingletonPalette rejects non-Singleton accents", () => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
   <rect fill="#00AAFF" width="10" height="10"/>
@@ -75,13 +96,36 @@ test("assertSingletonPalette rejects non-Singleton accents", () => {
   );
 });
 
-test("lockup rasterizer uses Open Sauce Sans, never a fallback", async () => {
+test("assertSingletonPalette rejects rgb and named accent colours", () => {
+  const rgb = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+  <rect fill="rgb(0,170,255)" width="10" height="10"/>
+</svg>`;
+  const named = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">
+  <rect fill="deepskyblue" width="10" height="10"/>
+</svg>`;
+  assert.throws(() => assertSingletonPalette(rgb, "rgb.svg"), /non-Singleton colour/);
+  assert.throws(() => assertSingletonPalette(named, "named.svg"), /non-Singleton colour/);
+});
+
+test("lockup rasterizer paints Open Sauce Sans glyphs", async () => {
   const svg = await readFile(
     join(ROOT, "src/logo/wordmark/sources/lockup-horizontal/dark.svg"),
     "utf8",
   );
   const png = renderSvgToPng(svg, { width: 840, height: 240 });
-  assert.ok(png.length > 1000, "png should not be empty");
+  // Wordmark sits to the right of the 56-unit icon (2×: x≈208, y≈90–160).
+  const { data, info } = await sharp(png)
+    .extract({ left: 220, top: 90, width: 300, height: 70 })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  let white = 0;
+  for (let i = 0; i < data.length; i += info.channels) {
+    if (data[i] > 200 && data[i + 1] > 200 && data[i + 2] > 200) white += 1;
+  }
+  assert.ok(
+    white > 800,
+    `wordmark crop should contain glyphs (white pixels=${white})`,
+  );
   const missingFont = svg.replaceAll("Open Sauce Sans", "DefinitelyMissingFont");
   assert.throws(
     () => renderSvgToPng(missingFont, { width: 840, height: 240 }),

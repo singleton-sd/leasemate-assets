@@ -3,6 +3,7 @@ import { access, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { syncLegacySvg } from "./sync-legacy-svg.mjs";
+import { assertVendoredFonts } from "./render-svg.mjs";
 
 const ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 
@@ -15,15 +16,59 @@ async function exists(p) {
   }
 }
 
+const ALLOWED_HEX = new Set([
+  "FFB300",
+  "C89200",
+  "7F848A",
+  "9DA1A6",
+  "000000",
+  "FFFFFF",
+  "000",
+  "FFF",
+]);
+
+const ALLOWED_PAINT_KEYWORDS = new Set([
+  "none",
+  "transparent",
+  "currentcolor",
+  "black",
+  "white",
+]);
+
+function decodeUriValue(raw) {
+  const unescaped = raw.replace(/&amp;/gi, "&").replace(/&colon;/gi, ":");
+  try {
+    return decodeURIComponent(unescaped);
+  } catch {
+    return unescaped;
+  }
+}
+
 function assertSvgSafe(svg, path) {
   if (!/viewBox\s*=/.test(svg)) {
     throw new Error(`${path}: missing viewBox`);
   }
-  if (/<script/i.test(svg) || /\son[a-z]+\s*=/i.test(svg)) {
+  // Local name `script`, with or without a namespace prefix (e.g. <s:script>).
+  if (/<\/?(?:[\w.-]+:)?script[\s>/]/i.test(svg) || /\son[a-z]+\s*=/i.test(svg)) {
     throw new Error(`${path}: scripts / event handlers are not allowed`);
   }
+  const uriAttrs = [
+    ...svg.matchAll(
+      /(?:href|src|xlink:href)\s*=\s*(["'])([^"']*)\1/gi,
+    ),
+  ];
+  for (const m of uriAttrs) {
+    const value = decodeUriValue(m[2]).trim();
+    if (!value || value.startsWith("#")) continue;
+    if (/^(javascript|vbscript|data):/i.test(value)) {
+      throw new Error(`${path}: executable URI schemes are not allowed`);
+    }
+    if (/^(?:https?:)?\/\//i.test(value)) {
+      throw new Error(`${path}: external URLs are not allowed`);
+    }
+  }
   // Strip approved W3C xmlns declarations, then reject any remaining absolute
-  // or scheme-relative URLs (e.g. external <image href="https://…">).
+  // or scheme-relative URLs (e.g. leftover https:// in text).
   const stripped = svg.replace(
     /\s+xmlns(?::[\w-]+)?\s*=\s*(["'])https?:\/\/www\.w3\.org[^"']*\1/gi,
     "",
@@ -33,22 +78,41 @@ function assertSvgSafe(svg, path) {
   }
 }
 
+function assertPaintValue(value, path) {
+  const v = value.trim();
+  if (!v) return;
+  const lower = v.toLowerCase();
+  if (ALLOWED_PAINT_KEYWORDS.has(lower)) return;
+  if (/^url\(#/i.test(v)) return;
+  const hex = v.match(/^#([0-9A-Fa-f]{3,8})$/);
+  if (hex) {
+    if (!ALLOWED_HEX.has(hex[1].toUpperCase())) {
+      throw new Error(`${path}: non-Singleton colour ${v}`);
+    }
+    return;
+  }
+  throw new Error(`${path}: non-Singleton colour ${v}`);
+}
+
 function assertSingletonPalette(svg, path) {
+  const paints = [
+    ...svg.matchAll(
+      /(?:fill|stroke|stop-color|color|flood-color|lighting-color)\s*=\s*(["'])([^"']*)\1/gi,
+    ),
+  ];
+  for (const m of paints) assertPaintValue(m[2], path);
+
+  const styles = [...svg.matchAll(/\sstyle\s*=\s*(["'])([^"']*)\1/gi)];
+  for (const s of styles) {
+    const decls = [...s[2].matchAll(/(?:fill|stroke|stop-color|color)\s*:\s*([^;]+)/gi)];
+    for (const d of decls) assertPaintValue(d[1], path);
+  }
+
   const hexes = [...svg.matchAll(/#([0-9A-Fa-f]{3,8})\b/g)].map((m) =>
     m[1].toUpperCase(),
   );
-  const allowed = new Set([
-    "FFB300",
-    "C89200",
-    "7F848A",
-    "9DA1A6",
-    "000000",
-    "FFFFFF",
-    "000",
-    "FFF",
-  ]);
   for (const hex of hexes) {
-    if (!allowed.has(hex)) {
+    if (!ALLOWED_HEX.has(hex)) {
       throw new Error(`${path}: non-Singleton colour #${hex}`);
     }
   }
@@ -162,6 +226,11 @@ export async function validateAssets() {
     "fonts/OFL.txt",
   ]) {
     if (!(await exists(join(ROOT, font)))) errors.push(`missing ${font}`);
+  }
+  try {
+    assertVendoredFonts();
+  } catch (e) {
+    errors.push(e.message);
   }
 
   for (const file of NAMED_PNG) {
