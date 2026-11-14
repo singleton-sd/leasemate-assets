@@ -23,6 +23,13 @@ runs `pnpm release:ci` (release-it):
 4. Publish `@singleton-sd/leasemate-assets` to npm via Trusted Publishing (OIDC).
    Do not add `NPM_TOKEN`.
 5. Create a GitHub Release with the generated notes.
+6. `.github/workflows/snapshot.yml` runs on `release: published` (not tag
+   push). It publishes an immutable `gh-pages` snapshot at
+   `/releases/<tag>/`, refuses to overwrite that directory if it already
+   exists, and attaches `leasemate-assets-<tag>.tar.gz`, the SHA-256
+   checksum, and `dist/manifest.json` to the GitHub Release. The latest
+   catalog at the Pages root is refreshed in the same job because the
+   release commit is `[skip ci]`.
 
 The git push uses the **singleton-release** GitHub App
 (`vars.RELEASE_APP_ID` + `secrets.RELEASE_APP_PRIVATE_KEY`), which is on the

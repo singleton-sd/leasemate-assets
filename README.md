@@ -8,7 +8,10 @@ See [BRAND.md](BRAND.md) and `meta.json`.
 
 Package: [`@singleton-sd/leasemate-assets`](https://www.npmjs.com/package/@singleton-sd/leasemate-assets)
 (Trusted Publishing / OIDC from GitHub Actions). **Pages CDN is still primary**
-for HTML consumers; npm ships a versioned `dist/` + masters for apps.
+for HTML consumers; npm ships a versioned `dist/` + masters for apps. GitHub
+Pages is served from the `gh-pages` branch: the site root is the latest
+catalog, and each release also publishes an immutable snapshot at
+`/releases/<tag>/`.
 
 ```sh
 pnpm add @singleton-sd/leasemate-assets
@@ -45,13 +48,20 @@ Base: **https://assets.leasemate.poc.singletonsd.com**
 | Favicon 32 | `https://assets.leasemate.poc.singletonsd.com/favicons/favicon-32x32.png` |
 | Apple touch | `https://assets.leasemate.poc.singletonsd.com/favicons/apple-touch-icon.png` |
 | Web manifest | `https://assets.leasemate.poc.singletonsd.com/favicons/site.webmanifest` |
-| OG (dark) | `https://assets.leasemate.poc.singletonsd.com/og-image/dark/og-default.png` |
+| OG (dark, pending Pato) | `https://assets.leasemate.poc.singletonsd.com/og-image/dark/og-default.png` |
 | Icon SVG (nav) | `https://assets.leasemate.poc.singletonsd.com/svg/leasemate-icon-dark.svg` |
 | Lockup SVG (nav) | `https://assets.leasemate.poc.singletonsd.com/svg/leasemate-lockup-on-dark-transparent.svg` |
 | Icon PNG 512 | `https://assets.leasemate.poc.singletonsd.com/png/leasemate-icon-dark-512.png` |
 | OAuth 120 | `https://assets.leasemate.poc.singletonsd.com/png/leasemate-oauth-120.png` |
 
+Pinned snapshot (same file after a release tag `0.1.0`):
+`https://assets.leasemate.poc.singletonsd.com/releases/0.1.0/png/leasemate-icon-dark-512.png`
+
 DNS + Pages setup: [`docs/deployment.md`](docs/deployment.md).
+
+Open Graph cards in `src/og-image/` are **pending Pato's approval**. They are
+centred 1200×630 lockup comps, not approved masters — do not treat them as
+signed-off brand assets until he reviews them.
 
 ## Legacy jsDelivr (pinned commit)
 

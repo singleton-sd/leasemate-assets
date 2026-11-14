@@ -11,6 +11,11 @@ LeaseMate is a Singleton SD product. It uses Singleton gold/yellow plus neutrals
 - "LeaseMate" in Open Sauce Sans 500 with -3% tracking, white on dark or black on light. Underneath sits a gold bar (34) next to a gray bar (12), then "BY SINGLETON SD" in 600 caps with +12% tracking in #7F848A. This matches the InkAds lockup.
 - Horizontal: leasemate-lockup-dark/light, plus transparent versions. Stacked: leasemate-stacked-dark/light.
 
+## Open Graph (pending Pato)
+`src/og-image/dark/og-default.png` and `src/og-image/light/og-default.png` are
+1200×630 comps with the horizontal lockup centred on black / white. They are
+**pending Pato's approval** and are not approved brand assets yet.
+
 ## UI colour = core Singleton tokens
 - Dark mode (default): #FFB300 primary fill with black text.
 - Light mode: #C89200 fill with black text (hover #B57F00, pressed #A36F00).

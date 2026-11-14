@@ -16,7 +16,7 @@
 | `logo/static/{theme}/{size}.png` | `src/logo/sources/{theme}.svg` |
 | `logo/wordmark/{role}/{theme}/*` | lockup SVG masters (+ PNG widths) |
 | `png/leasemate-*.png` | named raster handoff (2× lockups; app/OAuth sizes) |
-| `og-image/{theme}/og-default.png` | `src/og-image/…` |
+| `og-image/{theme}/og-default.png` | `src/og-image/…` (pending Pato) |
 | `svg/**` | full vector mirror for Pages |
 | `manifest.json` | SHA-256 inventory of `dist/` |
 
@@ -41,9 +41,11 @@ https://cdn.jsdelivr.net/gh/singleton-sd/leasemate-assets@<sha>/svg/leasemate-ic
 
 ## npm package
 
-Pages CDN is primary for HTML consumers. `@singleton-sd/leasemate-assets`
-publishes via GitHub Actions Trusted Publishing (OIDC) —
-`.github/workflows/release.yml` / `pnpm release:ci`. The git push uses the
-singleton-release GitHub App (`vars.RELEASE_APP_ID` +
+Pages CDN is primary for HTML consumers. The `gh-pages` branch serves the
+latest catalog at site root and an immutable `/releases/<tag>/` snapshot for
+each GitHub Release (triggered on `release: published`, not tag push).
+`@singleton-sd/leasemate-assets` publishes via GitHub Actions Trusted
+Publishing (OIDC) — `.github/workflows/release.yml` / `pnpm release:ci`. The
+git push uses the singleton-release GitHub App (`vars.RELEASE_APP_ID` +
 `secrets.RELEASE_APP_PRIVATE_KEY`). Do not use `GITHUB_TOKEN` or a PAT for
 that push. Do not add `NPM_TOKEN`.

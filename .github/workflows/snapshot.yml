@@ -1,0 +1,109 @@
+# Immutable /releases/<tag>/ snapshot + GitHub Release archives.
+# Triggered by the GitHub Release that release-it opens — not by tag push —
+# because the release commit message contains `[skip ci]`.
+name: Publish version snapshot
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing git tag to snapshot (unprefixed or vX.Y.Z)
+        required: true
+        type: string
+
+concurrency:
+  group: pages-publish
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    if: "${{ github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false }}"
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          persist-credentials: false
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+        with:
+          version: 11.22.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Validate semantic version tag
+        run: |
+          set -euo pipefail
+          node scripts/release-snapshot.mjs parse "$RELEASE_TAG"
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm validate
+      - run: pnpm test
+      - run: pnpm build
+        env:
+          CI: "true"
+
+      - name: Reject an existing version snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(node scripts/release-snapshot.mjs parse "$RELEASE_TAG")"
+          status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/releases/${version}?ref=gh-pages")"
+          node scripts/release-snapshot.mjs assert-absent "$status" "$RELEASE_TAG"
+
+      - name: Package generated assets
+        id: pkg
+        run: |
+          set -euo pipefail
+          version="$(node scripts/release-snapshot.mjs parse "$RELEASE_TAG")"
+          asset_id="$(node -p "JSON.parse(require('fs').readFileSync('config/product.json','utf8')).id")"
+          archive="$(node scripts/release-snapshot.mjs archive-name "$asset_id" "$RELEASE_TAG")"
+          tar -czf "$archive" -C dist .
+          sha256sum "$archive" > "${archive}.sha256"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "archive=${archive}" >> "$GITHUB_OUTPUT"
+
+      - name: Attach archive, checksum, and manifest to the GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release upload "$RELEASE_TAG" \
+            "${{ steps.pkg.outputs.archive }}" \
+            "${{ steps.pkg.outputs.archive }}.sha256" \
+            dist/manifest.json \
+            --clobber
+
+      - name: Refresh latest catalog
+        uses: JamesIves/github-pages-deploy-action@d92aa235d04922e8f08b40ce78cc5442fcfbfa2f # v4.8.0
+        with:
+          branch: gh-pages
+          folder: dist
+          clean: true
+          clean-exclude: |
+            releases
+            CNAME
+
+      - name: Publish immutable version directory
+        uses: JamesIves/github-pages-deploy-action@d92aa235d04922e8f08b40ce78cc5442fcfbfa2f # v4.8.0
+        with:
+          branch: gh-pages
+          folder: dist
+          target-folder: releases/${{ steps.pkg.outputs.version }}
+          clean: false
+          force: false

@@ -6,5 +6,5 @@
   "publicUrl": "https://assets.leasemate.poc.singletonsd.com",
   "themeColor": "#FFB300",
   "backgroundColor": "#000000",
-  "cdnNote": "GitHub Pages serves dist/ at site root under assets.leasemate.poc.singletonsd.com (CNAME → singleton-sd.github.io)."
+  "cdnNote": "gh-pages serves dist/ at site root plus immutable /releases/<tag>/ snapshots under assets.leasemate.poc.singletonsd.com (CNAME → singleton-sd.github.io)."
 }

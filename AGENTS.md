@@ -18,6 +18,9 @@ white and grays only — no product accent colour.
 - Named raster handoff lives in `png/`. Rebuild with `pnpm build` (Open Sauce
   Sans from `fonts/`; system fonts are disabled). If a generated PNG does not
   match the approved file, the approved raster in `png/` wins.
+- `src/og-image/` Open Graph cards are pending Pato's approval — not approved
+  masters. Pages latest catalog lives on `gh-pages`; each GitHub Release also
+  publishes an immutable `/releases/<tag>/` snapshot.
 
 ## Commits / PRs
 
