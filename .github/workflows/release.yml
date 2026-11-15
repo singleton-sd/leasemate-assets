@@ -177,7 +177,7 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
-          gh release create "v${VERSION}" \
+          gh release create "${VERSION}" \
             --title "v${VERSION}" \
             --target main \
             --notes-file release-files/release-notes.md

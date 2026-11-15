@@ -135,6 +135,13 @@ test("release.yml splits prepare from publish and never embeds the token in orig
   assert.match(yaml, /::add-mask::/);
   assert.match(jobs.publish, /GH_TOKEN: \$\{\{ steps\.app-token\.outputs\.token \}\}/);
   assert.doesNotMatch(jobs.publish, /GITHUB_TOKEN: \$\{\{ steps\.app-token/);
+  assert.match(jobs.publish, /git tag "\$\{VERSION\}"/);
+  assert.match(
+    jobs.publish,
+    /gh release create "\$\{VERSION\}"/,
+    "GitHub Release tag must match the unprefixed git tag",
+  );
+  assert.doesNotMatch(jobs.publish, /gh release create "v\$\{VERSION\}"/);
 });
 
 test("release-it commits and pushes with --no-verify", () => {
