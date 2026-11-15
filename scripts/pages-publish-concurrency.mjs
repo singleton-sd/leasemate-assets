@@ -30,14 +30,17 @@ function parseQueue(raw) {
 export function parseWorkflowConcurrency(yaml) {
   const block = yaml.match(/^concurrency:\n((?:[ \t]+.+\n)+)/m);
   if (!block) throw new Error("workflow is missing a concurrency block");
-  const body = block[1];
-  const group = body.match(/group:\s+(\S+)/)?.[1];
+  const body = block[1]
+    .split("\n")
+    .filter((line) => !/^[ \t]*#/.test(line))
+    .join("\n");
+  const group = body.match(/^[ \t]*group:\s+(\S+)\s*$/m)?.[1];
   if (!group) throw new Error("concurrency.group is missing");
-  const queueRaw = body.match(/queue:\s+(\S+)/)?.[1] ?? "single";
+  const queueRaw = body.match(/^[ \t]*queue:\s+(\S+)\s*$/m)?.[1] ?? "single";
   return {
     group,
     queue: parseQueue(queueRaw),
-    cancelInProgress: /^\s*cancel-in-progress:\s*true\s*$/m.test(body),
+    cancelInProgress: /^[ \t]*cancel-in-progress:\s*true\s*$/m.test(body),
   };
 }
 

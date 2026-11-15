@@ -52,6 +52,18 @@ test("pages.yml and snapshot.yml share pages-publish with queue: max", async () 
   assert.equal(snapshot.cancelInProgress, false);
 });
 
+test("parseWorkflowConcurrency reads queue from the setting, not a comment", () => {
+  const parsed = parseWorkflowConcurrency(`concurrency:
+  group: pages-publish
+  cancel-in-progress: false
+  # queue: max keeps pending snapshots
+  queue: single
+`);
+  assert.equal(parsed.queue, "single");
+  assert.equal(parsed.group, "pages-publish");
+  assert.equal(parsed.cancelInProgress, false);
+});
+
 test("active Pages + pending snapshot + later Pages retains the snapshot", async () => {
   const pages = parseWorkflowConcurrency(await readFile(PAGES, "utf8"));
   const sequence = ["pages-active", "snapshot-0.1.0", "pages-later"];
@@ -151,6 +163,13 @@ test("release.yml splits prepare from publish and never embeds the token in orig
   assert.match(jobs.publish, /id-token: write/);
   assert.doesNotMatch(jobs.publish, /pnpm install/);
   assert.doesNotMatch(jobs.publish, /pnpm (validate|test|build|release)/);
+  assert.match(jobs.publish, /node scripts\/release-resume\.mjs plan/);
+  assert.doesNotMatch(jobs.publish, /node scripts\/(?!release-resume\.mjs)/);
+  assert.doesNotMatch(jobs.publish, /git tag -f/);
+  assert.doesNotMatch(jobs.publish, /git push --force|\sgit push -f\s/);
+  assert.match(jobs.publish, /PLAN: \$\{\{ steps\.release\.outputs\.plan \}\}/);
+  assert.match(jobs.publish, /npm view "@singleton-sd\/leasemate-assets@\$\{VERSION\}"/);
+  assert.match(jobs.publish, /gh release view "\$VERSION"/);
   assert.doesNotMatch(yaml, /x-access-token:\$\{/);
   assert.match(
     yaml,

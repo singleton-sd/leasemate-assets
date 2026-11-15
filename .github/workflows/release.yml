@@ -103,6 +103,7 @@ jobs:
         with:
           ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
+          fetch-tags: true
           persist-credentials: false
 
       - name: Point local main at the prepared revision
@@ -136,10 +137,23 @@ jobs:
           done
 
       - name: Apply bump, commit, and tag
+        id: release
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
+          PREPARE_SHA: ${{ needs.prepare.outputs.sha }}
         run: |
           set -euo pipefail
+          git fetch origin "refs/tags/${VERSION}:refs/tags/${VERSION}" || true
+          plan="$(node scripts/release-resume.mjs plan "$VERSION" "$PREPARE_SHA")"
+          echo "plan=${plan}" >> "$GITHUB_OUTPUT"
+          if [[ "$plan" == "resume" ]]; then
+            git checkout -B main "${VERSION}^{commit}"
+            exit 0
+          fi
+          if [[ "$plan" != "create" ]]; then
+            echo "::error::unexpected release plan: ${plan}" >&2
+            exit 1
+          fi
           cp release-files/package.json package.json
           cp release-files/CHANGELOG.md CHANGELOG.md
           # singleton-release[bot] user id 356768209 — static so commit
@@ -163,8 +177,13 @@ jobs:
         env:
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
           VERSION: ${{ needs.prepare.outputs.version }}
+          PLAN: ${{ steps.release.outputs.plan }}
         run: |
           set -euo pipefail
+          if [[ "$PLAN" == "resume" ]]; then
+            echo "tag ${VERSION} already on origin; skip push"
+            exit 0
+          fi
           auth="$(printf 'x-access-token:%s' "${APP_TOKEN}" | base64 | tr -d '\n')"
           echo "::add-mask::${auth}"
           git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth}" \
@@ -175,6 +194,10 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
+          if npm view "@singleton-sd/leasemate-assets@${VERSION}" version >/dev/null 2>&1; then
+            echo "npm already has ${VERSION}"
+            exit 0
+          fi
           npm publish \
             "release-files/singleton-sd-leasemate-assets-${VERSION}.tgz" \
             --ignore-scripts \
@@ -187,6 +210,10 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
+          if gh release view "$VERSION" -R "$GH_REPO" >/dev/null 2>&1; then
+            echo "GitHub Release ${VERSION} already exists"
+            exit 0
+          fi
           gh release create "${VERSION}" \
             --title "v${VERSION}" \
             --target main \
