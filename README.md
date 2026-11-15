@@ -35,7 +35,7 @@ pnpm add @singleton-sd/leasemate-assets
 | Centered / square lockup | [`svg/leasemate-stacked-dark.svg`](svg/leasemate-stacked-dark.svg) / [`svg/leasemate-stacked-light.svg`](svg/leasemate-stacked-light.svg) (PNG at 2×) |
 | Sidebar / PDF / one-colour print | [`svg/leasemate-mono-black.svg`](svg/leasemate-mono-black.svg) or [`svg/leasemate-mono-white.svg`](svg/leasemate-mono-white.svg) |
 
-Wordmark typeface is **Plus Jakarta Sans** (OFL, Google Fonts): weight **500** for “LeaseMate” and for “BY SINGLETON SD”. Rasterization loads `fonts/` (400 / 500 / 700) and does not fall back to a system font.
+Wordmark typeface is **Plus Jakarta Sans** (OFL, Google Fonts): weight **500** for “LeaseMate” and for “BY SINGLETON SD”. Rasterization loads `fonts/` (400 / 500 / 700) and does not fall back to a system font. Published `svg/` lockups convert that text to path outlines so they do not require the font to be installed.
 
 ## Copy-paste CDN URLs (GitHub Pages)
 
@@ -72,7 +72,7 @@ Marketing and other consumers may still load vectors from a **pinned SHA**
 https://cdn.jsdelivr.net/gh/singleton-sd/leasemate-assets@<sha>/svg/<file>
 ```
 
-Root `svg/` is kept in sync with `src/` via `npm run sync:legacy-svg`.
+Root `svg/` is generated from `src/` via `npm run sync:legacy-svg` (lockup `<text>` converted to path outlines).
 
 Example icon:
 
@@ -98,7 +98,7 @@ Local dry-run: `pnpm release`. See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ```text
 src/                 # masters (edit here)
-svg/                 # named SVG handoff (synced from src)
+svg/                 # named SVG handoff (lockup text outlined)
 png/                 # named PNG handoff (approved rasters)
 fonts/               # Plus Jakarta Sans 400/500/700 (OFL)
 scripts/             # validate + build

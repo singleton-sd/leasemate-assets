@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url";
 import toIco from "to-ico";
 import { renderSvgToPng } from "./render-svg.mjs";
 import { isCompletePng, pngSize } from "./png-size.mjs";
+import { outlineSvgText } from "./outline-svg-text.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = join(ROOT, "dist");
@@ -151,7 +152,7 @@ async function buildWordmarks() {
       const svg = await readFile(svgPath, "utf8");
       const outDir = join(DIST, "logo/wordmark", role, theme);
       await ensureDir(outDir);
-      await writeFile(join(outDir, `${theme}.svg`), svg);
+      await writeFile(join(outDir, `${theme}.svg`), outlineSvgText(svg));
 
       for (const width of LOCKUP_WIDTHS) {
         // Height follows the SVG viewBox; do not pin it (non-integer scales).

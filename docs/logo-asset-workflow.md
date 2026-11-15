@@ -3,7 +3,8 @@
 ## Masters
 
 1. Update SVG under `src/logo/…` (or OG under `src/og-image/…`).
-2. Run `npm run sync:legacy-svg` so root `svg/` matches (named-file CDN).
+2. Run `npm run sync:legacy-svg` so root `svg/` matches (named-file CDN;
+   lockup text is converted to path outlines).
 3. Run `npm run validate && npm run build`.
 4. Commit `src/` + synced `svg/` (never commit `dist/`).
 5. If a named raster must match an approved comp, update `png/` and commit it.
@@ -21,7 +22,8 @@
 | `manifest.json` | SHA-256 inventory of `dist/` |
 
 Lockup text is rasterized with vendored **Plus Jakarta Sans** (`fonts/`). The
-renderer disables system fonts so the wordmark cannot fall back.
+renderer disables system fonts so the wordmark cannot fall back. Published
+`svg/` lockups ship the same glyphs as path outlines.
 
 ## CDN
 

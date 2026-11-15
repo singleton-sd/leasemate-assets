@@ -14,7 +14,9 @@ white and grays only — no product accent colour.
 - Edit masters under `src/` only.
 - Do not hand-edit `dist/`.
 - Keep root `svg/` in sync with `src/` via `npm run sync:legacy-svg` (jsDelivr /
-  named-file compatibility until consumers move to Pages CDN).
+  named-file compatibility until consumers move to Pages CDN). Lockup `<text>`
+  is converted to path outlines using `fonts/`; masters under `src/` keep live
+  text.
 - Named raster handoff lives in `png/`. Rebuild with `pnpm build` (Plus Jakarta
   Sans from `fonts/`; system fonts are disabled). If a generated PNG does not
   match the approved file, the approved raster in `png/` wins.

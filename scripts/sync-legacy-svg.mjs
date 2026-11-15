@@ -5,6 +5,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { outlineSvgText } from "./outline-svg-text.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -49,6 +50,7 @@ export async function syncLegacySvg({
   const mismatches = [];
   for (const [from, to] of map) {
     const src = await readFile(join(root, from), "utf8");
+    const expected = outlineSvgText(src);
     const destPath = join(root, to);
     if (checkOnly) {
       let dest;
@@ -58,11 +60,11 @@ export async function syncLegacySvg({
         mismatches.push(to);
         continue;
       }
-      if (dest !== src) mismatches.push(to);
+      if (dest !== expected) mismatches.push(to);
       continue;
     }
     await mkdir(dirname(destPath), { recursive: true });
-    await writeFile(destPath, src);
+    await writeFile(destPath, expected);
   }
   return mismatches;
 }
@@ -77,8 +79,8 @@ if (isMain) {
       console.error("legacy svg/ out of sync with src/:\n" + mismatches.join("\n"));
       process.exit(1);
     }
-    console.log("legacy svg/ matches src/");
+    console.log("legacy svg/ matches outlined src/");
   } else {
-    console.log(`synced ${MAP.length} files -> svg/`);
+    console.log(`synced ${MAP.length} files -> svg/ (lockup text outlined)`);
   }
 }

@@ -1,10 +1,11 @@
 #!/usr/bin/env node
-import { access, readFile } from "node:fs/promises";
+import { access, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pngSize } from "./png-size.mjs";
 import { syncLegacySvg } from "./sync-legacy-svg.mjs";
 import { assertVendoredFonts } from "./render-svg.mjs";
+import { assertPublishedSvgOutlined } from "./outline-svg-text.mjs";
 
 const ROOT = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 
@@ -146,7 +147,7 @@ function assertSingletonPalette(svg, path) {
   }
 }
 
-export { assertSvgSafe, assertSingletonPalette };
+export { assertSvgSafe, assertSingletonPalette, assertPublishedSvgOutlined };
 
 const MARK_FILES = [
   "dark.svg",
@@ -288,6 +289,27 @@ export async function validateAssets() {
 
   const mismatches = await syncLegacySvg({ checkOnly: true });
   for (const m of mismatches) errors.push(`legacy svg out of sync: ${m}`);
+
+  const svgDir = join(ROOT, "svg");
+  if (!(await exists(svgDir))) {
+    errors.push("missing svg/");
+  } else {
+    const published = (await readdir(svgDir)).filter((name) =>
+      name.endsWith(".svg"),
+    );
+    if (!published.length) errors.push("svg/ has no published SVG files");
+    for (const file of published) {
+      const path = `svg/${file}`;
+      try {
+        const svg = await readFile(join(svgDir, file), "utf8");
+        assertSvgSafe(svg, path);
+        assertSingletonPalette(svg, path);
+        assertPublishedSvgOutlined(svg, path);
+      } catch (e) {
+        errors.push(e.message);
+      }
+    }
+  }
 
   return errors;
 }

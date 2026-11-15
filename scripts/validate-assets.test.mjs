@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  assertPublishedSvgOutlined,
   assertSingletonPalette,
   assertSvgSafe,
   validateAssets,
@@ -127,6 +128,19 @@ test("assertSingletonPalette rejects rgb and named accent colours", () => {
 </svg>`;
   assert.throws(() => assertSingletonPalette(rgb, "rgb.svg"), /non-Singleton colour/);
   assert.throws(() => assertSingletonPalette(named, "named.svg"), /non-Singleton colour/);
+});
+
+test("validateAssets rejects published svg/ files that still contain <text>", async () => {
+  const errors = await validateAssets();
+  assert.deepEqual(errors, []);
+  assert.throws(
+    () =>
+      assertPublishedSvgOutlined(
+        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><text font-family="Plus Jakarta Sans">LeaseMate</text></svg>`,
+        "svg/leasemate-lockup-dark.svg",
+      ),
+    /svg\/leasemate-lockup-dark\.svg: published SVG must convert <text> to path outlines/,
+  );
 });
 
 test("lockup rasterizer paints Plus Jakarta Sans glyphs", async () => {

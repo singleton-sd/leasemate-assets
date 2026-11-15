@@ -8,7 +8,7 @@ LeaseMate is a Singleton SD product. It uses Singleton gold/yellow plus neutrals
 - Mono: leasemate-mono-black/white, for sidebars, PDFs and one-colour print.
 
 ## Wordmark and lockups
-- "LeaseMate" in Plus Jakarta Sans 500 (letter-spacing -0.28 at 38px / -0.27 at 36px stacked) so the wordmark fits the existing lockup boxes, white on dark or black on light. Underneath sits a gold bar (34) next to a gray bar (12), then "BY SINGLETON SD" in 500 caps with letter-spacing 1.5 in #7F848A.
+- "LeaseMate" in Plus Jakarta Sans 500 (letter-spacing -0.28 at 38px / -0.27 at 36px stacked) so the wordmark fits the existing lockup boxes, white on dark or black on light. Underneath sits a gold bar (34) next to a gray bar (12), then "BY SINGLETON SD" in 500 caps with letter-spacing 1.5 in #7F848A. Published `svg/` lockups convert that type to path outlines.
 - Horizontal: leasemate-lockup-dark/light, plus transparent versions. Stacked: leasemate-stacked-dark/light.
 
 ## Open Graph (pending Pato)
