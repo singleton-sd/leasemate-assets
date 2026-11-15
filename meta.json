@@ -19,14 +19,15 @@
   },
   "legacySvgRoot": "svg/",
   "font": {
-    "family": "Open Sauce Sans",
-    "source": "https://github.com/marcologous/Open-Sauce-Fonts",
+    "family": "Plus Jakarta Sans",
+    "source": "https://github.com/google/fonts/tree/main/ofl/plusjakartasans",
     "license": "OFL-1.1",
     "files": {
-      "500": "fonts/OpenSauceSans-Medium.ttf",
-      "600": "fonts/OpenSauceSans-SemiBold.ttf"
+      "400": "fonts/PlusJakartaSans-Regular.ttf",
+      "500": "fonts/PlusJakartaSans-Medium.ttf",
+      "700": "fonts/PlusJakartaSans-Bold.ttf"
     },
-    "usage": "Wordmark 500; BY SINGLETON SD caps line 600. Rasterizer must load these files and must not fall back to a system font."
+    "usage": "Wordmark and BY SINGLETON SD caps line use 500. Regular (400) and Bold (700) are vendored for the rasterizer. Must not fall back to a system font."
   },
   "tokens": {
     "package": "@singleton-sd/tokens",
@@ -87,5 +88,5 @@
     "link": "#8E5C00",
     "note": "Never use gold as text on white. Link and focus hexes arrive in tokens 1.7.0 (pending)."
   },
-  "designSource": "LeaseMate brand overlay — house icon (56-unit grid) + Open Sauce Sans lockup, Singleton gold/black only"
+  "designSource": "LeaseMate brand overlay — house icon (56-unit grid) + Plus Jakarta Sans lockup, Singleton gold/black only"
 }

@@ -20,7 +20,7 @@
 | `svg/**` | full vector mirror for Pages |
 | `manifest.json` | SHA-256 inventory of `dist/` |
 
-Lockup text is rasterized with vendored **Open Sauce Sans** (`fonts/`). The
+Lockup text is rasterized with vendored **Plus Jakarta Sans** (`fonts/`). The
 renderer disables system fonts so the wordmark cannot fall back.
 
 ## CDN

@@ -43,22 +43,22 @@ test("stacked 2x is 560×440", async () => {
   assert.equal(meta.height, 440);
 });
 
-test("renderer default family is Open Sauce Sans", () => {
-  assert.equal(FONT_FAMILY, "Open Sauce Sans");
+test("renderer default family is Plus Jakarta Sans", () => {
+  assert.equal(FONT_FAMILY, "Plus Jakarta Sans");
 });
 
-test("vendored fonts parse as Open Sauce Sans and match pinned checksums", () => {
+test("vendored fonts parse as Plus Jakarta Sans and match pinned checksums", () => {
   assertVendoredFonts();
-  const medium = readFileSync(join(ROOT, "fonts/OpenSauceSans-Medium.ttf"));
+  const medium = readFileSync(join(ROOT, "fonts/PlusJakartaSans-Medium.ttf"));
   const names = ttfFamilyNames(medium);
-  assert.ok(names.some((n) => /open sauce sans/i.test(n)));
+  assert.ok(names.some((n) => /plus jakarta sans/i.test(n)));
 });
 
 test("assertFontBuffer rejects invalid font data", () => {
   assert.throws(
     () =>
       assertFontBuffer(Buffer.from("not a font"), {
-        sha256: FONT_SHA256["OpenSauceSans-Medium.ttf"],
+        sha256: FONT_SHA256["PlusJakartaSans-Medium.ttf"],
         label: "bogus.ttf",
       }),
     /checksum mismatch/,

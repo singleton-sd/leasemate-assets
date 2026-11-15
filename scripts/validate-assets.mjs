@@ -223,8 +223,8 @@ export async function validateAssets() {
         const svg = await readFile(full, "utf8");
         assertSvgSafe(svg, path);
         assertSingletonPalette(svg, path);
-        if (!/Open Sauce Sans/.test(svg)) {
-          errors.push(`${path}: lockup must set font-family="Open Sauce Sans"`);
+        if (!/Plus Jakarta Sans/.test(svg)) {
+          errors.push(`${path}: lockup must set font-family="Plus Jakarta Sans"`);
         }
       } catch (e) {
         errors.push(e.message);
@@ -263,8 +263,9 @@ export async function validateAssets() {
   }
 
   for (const font of [
-    "fonts/OpenSauceSans-Medium.ttf",
-    "fonts/OpenSauceSans-SemiBold.ttf",
+    "fonts/PlusJakartaSans-Regular.ttf",
+    "fonts/PlusJakartaSans-Medium.ttf",
+    "fonts/PlusJakartaSans-Bold.ttf",
     "fonts/OFL.txt",
   ]) {
     if (!(await exists(join(ROOT, font)))) errors.push(`missing ${font}`);

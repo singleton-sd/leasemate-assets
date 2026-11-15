@@ -35,7 +35,7 @@ pnpm add @singleton-sd/leasemate-assets
 | Centered / square lockup | [`svg/leasemate-stacked-dark.svg`](svg/leasemate-stacked-dark.svg) / [`svg/leasemate-stacked-light.svg`](svg/leasemate-stacked-light.svg) (PNG at 2×) |
 | Sidebar / PDF / one-colour print | [`svg/leasemate-mono-black.svg`](svg/leasemate-mono-black.svg) or [`svg/leasemate-mono-white.svg`](svg/leasemate-mono-white.svg) |
 
-Wordmark typeface is **Open Sauce Sans** (OFL): weight **500** for “LeaseMate”, **600** for “BY SINGLETON SD”. Rasterization loads `fonts/` and does not fall back to a system font.
+Wordmark typeface is **Plus Jakarta Sans** (OFL, Google Fonts): weight **500** for “LeaseMate” and for “BY SINGLETON SD”. Rasterization loads `fonts/` (400 / 500 / 700) and does not fall back to a system font.
 
 ## Copy-paste CDN URLs (GitHub Pages)
 
@@ -100,7 +100,7 @@ Local dry-run: `pnpm release`. See [CONTRIBUTING.md](CONTRIBUTING.md).
 src/                 # masters (edit here)
 svg/                 # named SVG handoff (synced from src)
 png/                 # named PNG handoff (approved rasters)
-fonts/               # Open Sauce Sans 500/600 (OFL)
+fonts/               # Plus Jakarta Sans 400/500/700 (OFL)
 scripts/             # validate + build
 dist/                # generated — Pages publishes this
 config/product.json  # publicUrl + identity

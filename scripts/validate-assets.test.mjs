@@ -46,7 +46,7 @@ test("meta.json maps brand hex to @singleton-sd/tokens ids", async () => {
   assert.equal(meta.colors.gray500.tokenId, "gray-600");
   assert.equal(meta.colors.gray300.tokenId, "gray-300");
   assert.equal(meta.colors.grayLight500.hex.toUpperCase(), "#9DA1A6");
-  assert.equal(meta.font.family, "Open Sauce Sans");
+  assert.equal(meta.font.family, "Plus Jakarta Sans");
 });
 
 test("assertSvgSafe rejects external href even with xmlns", () => {
@@ -129,7 +129,7 @@ test("assertSingletonPalette rejects rgb and named accent colours", () => {
   assert.throws(() => assertSingletonPalette(named, "named.svg"), /non-Singleton colour/);
 });
 
-test("lockup rasterizer paints Open Sauce Sans glyphs", async () => {
+test("lockup rasterizer paints Plus Jakarta Sans glyphs", async () => {
   const svg = await readFile(
     join(ROOT, "src/logo/wordmark/sources/lockup-horizontal/dark.svg"),
     "utf8",
@@ -148,7 +148,7 @@ test("lockup rasterizer paints Open Sauce Sans glyphs", async () => {
     white > 800,
     `wordmark crop should contain glyphs (white pixels=${white})`,
   );
-  const missingFont = svg.replaceAll("Open Sauce Sans", "DefinitelyMissingFont");
+  const missingFont = svg.replaceAll("Plus Jakarta Sans", "DefinitelyMissingFont");
   assert.throws(
     () => renderSvgToPng(missingFont, { width: 840, height: 240 }),
     /must use font-family/,

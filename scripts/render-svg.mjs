@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Rasterize SVG with the vendored Open Sauce Sans files only.
+ * Rasterize SVG with the vendored Plus Jakarta Sans files only.
  * System fonts are disabled so lockup text can never fall back.
  */
 import { createHash } from "node:crypto";
@@ -12,19 +12,22 @@ import { Resvg } from "@resvg/resvg-js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 export const FONT_DIR = join(ROOT, "fonts");
-export const FONT_FAMILY = "Open Sauce Sans";
+export const FONT_FAMILY = "Plus Jakarta Sans";
 
 export const FONT_FILES = [
-  join(FONT_DIR, "OpenSauceSans-Medium.ttf"),
-  join(FONT_DIR, "OpenSauceSans-SemiBold.ttf"),
+  join(FONT_DIR, "PlusJakartaSans-Regular.ttf"),
+  join(FONT_DIR, "PlusJakartaSans-Medium.ttf"),
+  join(FONT_DIR, "PlusJakartaSans-Bold.ttf"),
 ];
 
-/** Pinned SHA-256 of the vendored OFL files (name table must also say Open Sauce Sans). */
+/** Pinned SHA-256 of the vendored OFL files (name table must also say Plus Jakarta Sans). */
 export const FONT_SHA256 = {
-  "OpenSauceSans-Medium.ttf":
-    "afb340900182f0c611fe426d42e504a4ebdff08d5b7e02f60be2c77f64067c9f",
-  "OpenSauceSans-SemiBold.ttf":
-    "9fbced4ee2764ed6272f636d8370f759260e0978e838b96c9bb0865b8f94e4f8",
+  "PlusJakartaSans-Regular.ttf":
+    "c0daa5ad662c62f51be4dda026cea87b24e98d20f6253c000cc02abc808ea5c1",
+  "PlusJakartaSans-Medium.ttf":
+    "455afe049eef1b48ab33d9efaacd83811dbdfcc3f97508a84cbca832003ad39f",
+  "PlusJakartaSans-Bold.ttf":
+    "23b4e5c8eef051cf225c8970bde46b5f8354962335646aa0feeac6e2f3e7b02e",
 };
 
 export function fontFiles() {
@@ -105,9 +108,9 @@ export function assertFontBuffer(buf, spec) {
     );
   }
   const names = ttfFamilyNames(buf);
-  if (!names.some((n) => /open sauce sans/i.test(n))) {
+  if (!names.some((n) => /plus jakarta sans/i.test(n))) {
     throw new Error(
-      `${spec.label}: family is not Open Sauce Sans (got ${names.join(", ")})`,
+      `${spec.label}: family is not Plus Jakarta Sans (got ${names.join(", ")})`,
     );
   }
 }
@@ -130,8 +133,8 @@ export function assertVendoredFonts() {
 export function renderSvgToPng(svg, fit = {}) {
   assertVendoredFonts();
   const svgStr = typeof svg === "string" ? svg : svg.toString("utf8");
-  if (/font-family/i.test(svgStr) && !/Open Sauce Sans/i.test(svgStr)) {
-    throw new Error("SVG text must use font-family=\"Open Sauce Sans\"");
+  if (/font-family/i.test(svgStr) && !/Plus Jakarta Sans/i.test(svgStr)) {
+    throw new Error("SVG text must use font-family=\"Plus Jakarta Sans\"");
   }
 
   /** @type {import('@resvg/resvg-js').ResvgRenderOptions} */
