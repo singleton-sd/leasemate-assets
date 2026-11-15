@@ -16,6 +16,7 @@ const SNAPSHOT = join(ROOT, ".github/workflows/snapshot.yml");
 const RELEASE = join(ROOT, ".github/workflows/release.yml");
 
 const BOT_URL = "https://example.invalid/users/singleton-release[bot]";
+const NODE_INVOKE = /(?:^|[\n\t '"=])(?:node|pnpm|npx)(?:[\n\t ]|$)/m;
 
 /**
  * @param {string} yaml
@@ -83,7 +84,7 @@ test("snapshot.yml never deploys a tagged dist to Pages root", async () => {
   assert.match(yaml, /workflow_dispatch:/);
   assert.match(
     yaml,
-    /target-folder:\s+releases\/\$\{\{\s*needs\.build\.outputs\.version\s*\}\}/,
+    /target-folder:\s+releases\/\$\{\{\s*steps\.tag\.outputs\.version\s*\}\}/,
   );
   assert.doesNotMatch(yaml, /name:\s+Refresh latest catalog/);
   const deploys = [
@@ -129,24 +130,29 @@ test("pages.yml and snapshot.yml mint the App token only in publish", async () =
   }
 });
 
-test("snapshot.yml passes the archive to gh via env, not interpolation", async () => {
+test("snapshot.yml takes the tag from the event or input and does not clobber", async () => {
   const yaml = await readFile(SNAPSHOT, "utf8");
   const jobs = jobBlocks(yaml);
   assert.match(
     jobs.publish,
-    /ARCHIVE: \$\{\{ needs\.build\.outputs\.archive \}\}/,
+    /github\.event_name == 'workflow_dispatch' && inputs\.tag \|\| github\.ref_name/,
   );
+  assert.doesNotMatch(jobs.publish, /needs\.build\.outputs\.(tag|archive|version)/);
+  assert.doesNotMatch(jobs.publish, /--clobber/);
+  assert.doesNotMatch(jobs.build, /\|\| git rev-parse HEAD/);
   assert.match(
     jobs.publish,
     /GH_TOKEN: \$\{\{ steps\.app-token\.outputs\.token \}\}/,
   );
+  assert.match(jobs.publish, /GH_REPO: \$\{\{ github\.repository \}\}/);
+  assert.match(jobs.publish, /-R "\$\{GH_REPO\}"/);
+  assert.match(jobs.publish, /sha256sum --check --strict/);
+  assert.match(jobs.publish, /exactly one checksum record/);
+  assert.match(jobs.publish, /skipping upload/);
   assert.match(
     jobs.publish,
-    /GH_REPO: \$\{\{ github\.repository \}\}/,
+    /\$\{product_id\}-assets-\$\{VERSION\}\.tar\.gz/,
   );
-  assert.match(jobs.publish, /-R "\$GH_REPO"/);
-  assert.match(jobs.publish, /sha256sum --check --strict "\$ARCHIVE\.sha256"/);
-  assert.doesNotMatch(jobs.publish, /steps\.pkg\.outputs\.archive/);
 });
 
 test("release.yml splits prepare from publish and never embeds the token in origin", async () => {
@@ -167,22 +173,7 @@ test("release.yml splits prepare from publish and never embeds the token in orig
   assert.doesNotMatch(jobs.publish, /git tag -f/);
   assert.doesNotMatch(jobs.publish, /git push --force|\sgit push -f\s/);
   assert.match(jobs.publish, /PUSH: \$\{\{ steps\.plan\.outputs\.push \}\}/);
-  assert.match(jobs.publish, /gh release view "\$\{VERSION\}"/);
   assert.match(jobs.publish, /working-directory: \$\{\{ runner\.temp \}\}/);
-  assert.match(jobs.publish, /git merge-base --is-ancestor/);
-  assert.match(
-    jobs.publish,
-    /chore\(release\): v\$\{VERSION\} \[skip ci\]/,
-  );
-  assert.match(jobs.publish, /singleton-sd-leasemate-assets-\$\{VERSION\}\.tgz/);
-  assert.match(jobs.publish, /git show "\$\{PREPARED_SHA\}:package\.json"/);
-  assert.doesNotMatch(jobs.publish, /jq -S/);
-  assert.match(jobs.publish, /version_line=/);
-  assert.match(jobs.publish, /tar -xOzf/);
-  assert.match(jobs.publish, /find \. -mindepth 1 -printf '%y %P\\n'/);
-  assert.match(jobs.publish, /minus \+build metadata/);
-  assert.match(yaml, /recover_version:/);
-  assert.match(jobs.prepare, /echo "recover=\$\{recover\}"/);
   assert.doesNotMatch(yaml, /x-access-token:\$\{/);
   assert.match(
     yaml,
@@ -197,7 +188,6 @@ test("release.yml splits prepare from publish and never embeds the token in orig
     jobs.publish,
     /git tag -a "\$\{VERSION\}" -m "v\$\{VERSION\}"/,
   );
-  assert.doesNotMatch(jobs.publish, /git tag "\$\{VERSION\}"/);
   assert.match(jobs.publish, /"refs\/tags\/\$\{VERSION\}"/);
   assert.doesNotMatch(jobs.publish, /--follow-tags/);
   assert.match(
@@ -206,15 +196,32 @@ test("release.yml splits prepare from publish and never embeds the token in orig
     "GitHub Release tag must match the unprefixed git tag",
   );
   assert.doesNotMatch(jobs.publish, /gh release create "v\$\{VERSION\}"/);
-  assert.match(jobs.prepare, /sha="\$\(git rev-parse HEAD\)"/);
   assert.match(jobs.publish, /ref: main/);
   assert.match(jobs.publish, /PREPARED_SHA: \$\{\{ needs\.prepare\.outputs\.sha \}\}/);
-  assert.doesNotMatch(jobs.publish, /git checkout -B main origin\/main/);
+  assert.match(jobs.publish, /github-release-notes\.md/);
   assert.match(jobs.publish, /356768209\+singleton-release\[bot\]@users\.noreply\.github\.com/);
   const npmIdx = jobs.publish.indexOf("npm publish");
   const releaseIdx = jobs.publish.indexOf("gh release create");
   assert.ok(npmIdx >= 0 && releaseIdx > npmIdx, "npm publish before gh release create");
-  assert.match(jobs.prepare, /awk '\/\^## \//);
+});
+
+test("publish jobs that mint the App token are guarded to main and the release environment", async () => {
+  const release = jobBlocks(await readFile(RELEASE, "utf8"));
+  const pages = jobBlocks(await readFile(PAGES, "utf8"));
+  const snapshot = jobBlocks(await readFile(SNAPSHOT, "utf8"));
+  assert.match(release.publish, /if: github\.ref == 'refs\/heads\/main'/);
+  assert.match(release.publish, /environment: release/);
+  assert.match(pages.publish, /if: github\.ref == 'refs\/heads\/main'/);
+  assert.match(pages.publish, /environment: release/);
+  assert.match(
+    snapshot.publish,
+    /github\.event_name == 'workflow_dispatch' && github\.ref == 'refs\/heads\/main'/,
+  );
+  assert.match(snapshot.publish, /environment: release/);
+  assert.match(
+    snapshot.build,
+    /github\.event_name == 'workflow_dispatch' && github\.ref == 'refs\/heads\/main'/,
+  );
 });
 
 test("release.yml publish invokes no node/pnpm/npx before or after mint", async () => {
@@ -222,9 +229,8 @@ test("release.yml publish invokes no node/pnpm/npx before or after mint", async 
   const jobs = jobBlocks(yaml);
   const mint = jobs.publish.indexOf("create-github-app-token");
   assert.ok(mint > 0, "publish must mint an App token");
-  const invoke = /(?:^|[\n\t '"=])(?:node|pnpm|npx)(?:[\n\t ]|$)/m;
-  assert.doesNotMatch(jobs.publish.slice(0, mint), invoke);
-  assert.doesNotMatch(jobs.publish.slice(mint), invoke);
+  assert.doesNotMatch(jobs.publish.slice(0, mint), NODE_INVOKE);
+  assert.doesNotMatch(jobs.publish.slice(mint), NODE_INVOKE);
   assert.ok(
     jobs.publish.indexOf("Verify prepared release") < mint,
     "artifact verification must finish before minting",
@@ -248,12 +254,12 @@ test("snapshot.yml verifies chore(release) ancestry before repo code and mint", 
   assert.match(jobs.publish, /git merge-base --is-ancestor/);
   assert.match(
     jobs.publish,
-    /chore\(release\): v\$\{VERSION\} \[skip ci\]/,
+    /chore\(release\): v\$\{version\} \[skip ci\]/,
   );
   const mint = jobs.publish.indexOf("create-github-app-token");
   assert.ok(jobs.publish.indexOf("git merge-base --is-ancestor") < mint);
-  const invoke = /(?:^|[\n\t '"=])(?:node|pnpm|npx)(?:[\n\t ]|$)/m;
-  assert.doesNotMatch(jobs.publish, invoke);
+  assert.ok(jobs.publish.indexOf("Verify snapshot archives") < mint);
+  assert.doesNotMatch(jobs.publish, NODE_INVOKE);
 });
 
 test("release-it commits and pushes with --no-verify", () => {

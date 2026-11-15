@@ -5,7 +5,8 @@
 # deploys a tagged dist there, including workflow_dispatch backfills.
 #
 # Build is unauthenticated (contents: read, no secrets). Publish checks out
-# for JamesIves and gh, downloads artifacts, then mints the singleton-release
+# for JamesIves and gh, downloads artifacts, verifies the tag and archives
+# with bash/git/jq (no node/pnpm/npx), then mints the singleton-release
 # App token as its last setup step and uses it for `gh release upload` and
 # the gh-pages snapshot — never GITHUB_TOKEN.
 name: Publish version snapshot
@@ -32,19 +33,15 @@ permissions:
 
 jobs:
   build:
-    if: "${{ github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false }}"
+    if: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event_name == 'release' && github.event.release.prerelease == false) }}
     runs-on: ubuntu-latest
     env:
-      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
-    outputs:
-      version: ${{ steps.pkg.outputs.version }}
-      archive: ${{ steps.pkg.outputs.archive }}
-      tag: ${{ steps.pkg.outputs.tag }}
+      SNAPSHOT_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
       - name: Parse stable tag
         id: tag
         env:
-          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          TAG: ${{ env.SNAPSHOT_TAG }}
         run: |
           set -euo pipefail
           fail() { echo "::error::$*" >&2; exit 1; }
@@ -55,20 +52,20 @@ jobs:
 
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           persist-credentials: false
           fetch-depth: 0
 
       - name: Verify release tag
         env:
-          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           VERSION: ${{ steps.tag.outputs.version }}
           DEFAULT_BRANCH: main
         run: |
           set -euo pipefail
           fail() { echo "::error::$*" >&2; exit 1; }
           git fetch --no-tags origin "refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
-          commit="$(git rev-parse "refs/tags/${TAG}^{commit}" 2>/dev/null || git rev-parse HEAD)"
+          commit="$(git rev-parse "refs/tags/${TAG}^{commit}")"
           [[ "$(git rev-parse HEAD)" == "${commit}" ]] || fail "Checked-out commit is not tag ${TAG}."
           [[ "$(git log -1 --format=%s "${commit}")" == "chore(release): v${VERSION} [skip ci]" ]] \
             || fail "${TAG} is not on a chore(release) commit."
@@ -92,27 +89,30 @@ jobs:
           CI: "true"
 
       - name: Reject an existing version snapshot
+        env:
+          TAG: ${{ env.SNAPSHOT_TAG }}
         run: |
           set -euo pipefail
-          version="$(node scripts/release-snapshot.mjs parse "$RELEASE_TAG")"
+          version="$(node scripts/release-snapshot.mjs parse "$TAG")"
           status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
             --header 'Accept: application/vnd.github+json' \
             --header 'X-GitHub-Api-Version: 2022-11-28' \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/releases/${version}?ref=gh-pages")"
-          node scripts/release-snapshot.mjs assert-absent "$status" "$RELEASE_TAG"
+          node scripts/release-snapshot.mjs assert-absent "$status" "$TAG"
 
       - name: Package generated assets
         id: pkg
+        env:
+          TAG: ${{ env.SNAPSHOT_TAG }}
         run: |
           set -euo pipefail
-          version="$(node scripts/release-snapshot.mjs parse "$RELEASE_TAG")"
+          version="$(node scripts/release-snapshot.mjs parse "$TAG")"
           asset_id="$(node -p "JSON.parse(require('fs').readFileSync('config/product.json','utf8')).id")"
-          archive="$(node scripts/release-snapshot.mjs archive-name "$asset_id" "$RELEASE_TAG")"
+          archive="$(node scripts/release-snapshot.mjs archive-name "$asset_id" "$TAG")"
           tar -czf "$archive" -C dist .
           sha256sum "$archive" > "${archive}.sha256"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "archive=${archive}" >> "$GITHUB_OUTPUT"
-          echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -132,27 +132,36 @@ jobs:
 
   publish:
     needs: build
+    if: ${{ (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') || (github.event_name == 'release' && github.event.release.prerelease == false) }}
+    environment: release
     runs-on: ubuntu-latest
+    env:
+      SNAPSHOT_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          ref: ${{ needs.build.outputs.tag }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           persist-credentials: false
           fetch-depth: 0
       - name: Verify release tag
+        id: tag
         env:
-          TAG: ${{ needs.build.outputs.tag }}
-          VERSION: ${{ needs.build.outputs.version }}
+          TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
           DEFAULT_BRANCH: main
         run: |
           set -euo pipefail
           fail() { echo "::error::$*" >&2; exit 1; }
+          version="${TAG#v}"
+          [[ "${version}" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]] \
+            || fail "${TAG} is not a stable semver tag."
           git fetch --no-tags origin "refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
-          commit="$(git rev-parse HEAD)"
-          [[ "$(git log -1 --format=%s "${commit}")" == "chore(release): v${VERSION} [skip ci]" ]] \
+          commit="$(git rev-parse "refs/tags/${TAG}^{commit}")"
+          [[ "$(git rev-parse HEAD)" == "${commit}" ]] || fail "Checked-out commit is not tag ${TAG}."
+          [[ "$(git log -1 --format=%s "${commit}")" == "chore(release): v${version} [skip ci]" ]] \
             || fail "${TAG} is not on a chore(release) commit."
           git merge-base --is-ancestor "${commit}" "refs/remotes/origin/${DEFAULT_BRANCH}" \
             || fail "${TAG} is not on ${DEFAULT_BRANCH}."
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: snapshot-dist
@@ -160,7 +169,40 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: snapshot-archives
-          path: .
+          path: ${{ runner.temp }}/snapshot-archives
+      - name: Verify snapshot archives
+        id: archive
+        env:
+          TAG: ${{ env.SNAPSHOT_TAG }}
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$*" >&2; exit 1; }
+          files="${RUNNER_TEMP}/snapshot-archives"
+          product_id="$(git show "HEAD:config/product.json" | jq -r '.id')"
+          [[ "${product_id}" =~ ^[a-z][a-z0-9-]*$ ]] || fail "product id '${product_id}' is not a safe slug."
+          archive="${product_id}-assets-${VERSION}.tar.gz"
+          listing="$(cd "${files}" && find . -mindepth 1 -printf '%y %P\n' | LC_ALL=C sort)"
+          want="$(printf 'f %s\n' "${archive}" "${archive}.sha256" | LC_ALL=C sort)"
+          [[ "${listing}" == "${want}" ]] || fail "Unexpected archive contents: ${listing//$'\n'/, }"
+          [[ -f "${files}/${archive}" && ! -L "${files}/${archive}" ]] \
+            || fail "${archive} is not a regular file."
+          [[ -f "${files}/${archive}.sha256" && ! -L "${files}/${archive}.sha256" ]] \
+            || fail "${archive}.sha256 is not a regular file."
+          [[ "$(grep -cve '^[[:space:]]*$' "${files}/${archive}.sha256")" == 1 ]] \
+            || fail "${archive}.sha256 must contain exactly one checksum record."
+          named="$(awk 'NF {
+            if (NF != 2) exit 2
+            f=$2
+            sub(/^\*/, "", f)
+            print f
+            exit
+          }' "${files}/${archive}.sha256")" \
+            || fail "${archive}.sha256 is not a single GNU sha256sum record."
+          [[ "${named}" == "${archive}" ]] \
+            || fail "${archive}.sha256 names '${named}', not ${archive}."
+          (cd "${files}" && sha256sum --check --strict "${archive}.sha256")
+          echo "archive=${archive}" >> "$GITHUB_OUTPUT"
       - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app-token
         with:
@@ -173,17 +215,37 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ needs.build.outputs.tag }}
-          ARCHIVE: ${{ needs.build.outputs.archive }}
+          RELEASE_TAG: ${{ env.SNAPSHOT_TAG }}
+          ARCHIVE: ${{ steps.archive.outputs.archive }}
         run: |
           set -euo pipefail
-          sha256sum --check --strict "$ARCHIVE.sha256"
-          gh release upload "$RELEASE_TAG" \
-            "$ARCHIVE" \
-            "$ARCHIVE.sha256" \
-            dist/manifest.json \
-            -R "$GH_REPO" \
-            --clobber
+          fail() { echo "::error::$*" >&2; exit 1; }
+          files="${RUNNER_TEMP}/snapshot-archives"
+          local_paths=(
+            "${files}/${ARCHIVE}"
+            "${files}/${ARCHIVE}.sha256"
+            "dist/manifest.json"
+          )
+          existing="$(gh release view "${RELEASE_TAG}" -R "${GH_REPO}" --json assets --jq '.assets[].name')"
+          to_upload=()
+          for path in "${local_paths[@]}"; do
+            [[ -f "${path}" && ! -L "${path}" ]] || fail "${path} is not a regular file."
+            name="$(basename "${path}")"
+            if printf '%s\n' "${existing}" | grep -Fxq -- "${name}"; then
+              tmp="$(mktemp)"
+              gh release download "${RELEASE_TAG}" -R "${GH_REPO}" -p "${name}" -O "${tmp}"
+              cmp -s "${tmp}" "${path}" \
+                || fail "GitHub Release asset ${name} differs from the verified local file."
+              echo "Release already has identical ${name}; skipping upload."
+            else
+              to_upload+=("${path}")
+            fi
+          done
+          if ((${#to_upload[@]})); then
+            gh release upload "${RELEASE_TAG}" "${to_upload[@]}" -R "${GH_REPO}"
+          else
+            echo "All snapshot assets already on the GitHub Release."
+          fi
       # Site root (latest catalog) is published from main by pages.yml.
       # A tagged historical backfill must not deploy its dist to root.
       - name: Publish immutable version directory
@@ -192,6 +254,6 @@ jobs:
           token: ${{ steps.app-token.outputs.token }}
           branch: gh-pages
           folder: dist
-          target-folder: releases/${{ needs.build.outputs.version }}
+          target-folder: releases/${{ steps.tag.outputs.version }}
           clean: false
           force: false

@@ -12,7 +12,7 @@ of releasing. The release workflow does that on merge to `main`.
 
 ## Releases
 
-On merge to `main` (or `workflow_dispatch`), `.github/workflows/release.yml`
+On merge to `main` (or `workflow_dispatch` from `main`), `.github/workflows/release.yml`
 splits prepare (no App token) from publish:
 
 1. Compute the next version from the latest `X.Y.Z` tag plus conventional
@@ -28,13 +28,17 @@ splits prepare (no App token) from publish:
    `recover_version` + `recover_sha` (the parent of the release commit).
 4. Publish `@singleton-sd/leasemate-assets` to npm via Trusted Publishing (OIDC).
    Do not add `NPM_TOKEN`.
-5. Create a GitHub Release with `gh release create`, including the latest
-   CHANGELOG section in the notes.
+5. Re-derive the GitHub Release notes from the verified CHANGELOG section
+   for that version (do not trust prepare's `release-notes.md` unless it
+   matches byte for byte) and create the release with `gh release create`.
 6. `.github/workflows/snapshot.yml` runs on `release: published` (not tag
    push). It publishes an immutable `gh-pages` snapshot at
    `/releases/<tag>/`, refuses to overwrite that directory if it already
    exists, and attaches `leasemate-assets-<tag>.tar.gz`, the SHA-256
-   checksum, and `dist/manifest.json` to the GitHub Release. It does not
+   checksum, and `dist/manifest.json` to the GitHub Release. A retry
+   skips assets that already match byte for byte, fails if an existing
+   asset differs, and uploads only the missing ones — it never replaces.
+   It does not
    deploy to the Pages root: the latest catalog is published by
    `pages.yml` from `main`. Backfilling an older tag must not replace
    current assets at site root.
@@ -47,7 +51,11 @@ that push — `GITHUB_TOKEN` cannot bypass the CodeRabbit required ruleset
 unauthenticated in the prepare job. The App token is minted last in the
 publish job (no install, no repo scripts) and used only via `git extraheader`,
 `gh`, and npm OIDC. npm publish uses `--ignore-scripts` so `prepublishOnly`
-does not re-run.
+does not re-run. Publish jobs that mint the App token reject
+`workflow_dispatch` unless the ref is `main`, and are attached to the GitHub
+Environment named `release` so required reviewers and deployment-branch rules
+can be set in the repo. Snapshot publish also runs on `release: published`
+(a tag ref); environment branch rules must allow those tags.
 
 The job is skipped when the head commit message starts with `chore(release):`,
 so the release commit does not loop.

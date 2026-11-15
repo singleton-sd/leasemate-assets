@@ -31,7 +31,7 @@ permissions:
 jobs:
   prepare:
     # Untrusted: dependency and repo scripts run here. No secrets, App token, or id-token.
-    if: "${{ github.event_name == 'workflow_dispatch' || !startsWith(github.event.head_commit.message, 'chore(release):') }}"
+    if: "${{ github.ref == 'refs/heads/main' && (github.event_name == 'workflow_dispatch' || !startsWith(github.event.head_commit.message, 'chore(release):')) }}"
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -116,8 +116,8 @@ jobs:
           version="$(node -p 'require("./package.json").version')"
           # Official SemVer 2.0.0 minus +build metadata (semver.org), POSIX ERE.
           semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?$'
-          [[ "${version}" =~ ${semver} ]] || fail "package.json has no valid SemVer version: '${version}'."
           [[ "${version}" != *+* ]] || fail "package.json version has +build metadata: '${version}'."
+          [[ "${version}" =~ ${semver} ]] || fail "package.json has no valid SemVer version: '${version}'."
           out="${RUNNER_TEMP}/release-files"
           mkdir -p "${out}"
           pnpm run --if-present prepack
@@ -125,7 +125,16 @@ jobs:
           expected="singleton-sd-leasemate-assets-${version}.tgz"
           [[ "${tarball}" == "${expected}" ]] || fail "Tarball '${tarball}' is not ${expected}."
           cp package.json CHANGELOG.md "${out}/"
-          awk '/^## / { if (found) exit; found=1 } found { print }' CHANGELOG.md > "${out}/release-notes.md"
+          ver_re="$(printf '%s' "${version}" | sed -e 's/[][().*^$+?{|]/\\&/g')"
+          awk -v ver_re="${ver_re}" '
+            /^## / {
+              if (found) exit
+              if ($0 ~ "^## \\[" ver_re "\\]" || $0 ~ "^## " ver_re "([ (]|$)") found=1
+              else next
+            }
+            found { print }
+          ' CHANGELOG.md > "${out}/release-notes.md"
+          [[ -s "${out}/release-notes.md" ]] || fail "CHANGELOG.md has no ## section for ${version}."
           {
             echo "version=${version}"
             echo "package=$(node -p 'require("./package.json").name')"
@@ -142,6 +151,8 @@ jobs:
   publish:
     # Runs no repo code: no install, no node/pnpm/npx, no repo scripts or hooks.
     needs: prepare
+    if: github.ref == 'refs/heads/main'
+    environment: release
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -208,8 +219,8 @@ jobs:
           files="${RUNNER_TEMP}/release-files"
           # Official SemVer 2.0.0 minus +build metadata (semver.org), POSIX ERE.
           semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?$'
-          [[ "${VERSION}" =~ ${semver} ]] || fail "Prepared version is not SemVer: '${VERSION}'."
           [[ "${VERSION}" != *+* ]] || fail "Prepared version has +build metadata: '${VERSION}'."
+          [[ "${VERSION}" =~ ${semver} ]] || fail "Prepared version is not SemVer: '${VERSION}'."
           [[ "${PREPARED_SHA}" =~ ^[0-9a-f]{40}$ ]] || fail "Prepared sha is not a commit id."
           [[ "${TARBALL}" == "singleton-sd-leasemate-assets-${VERSION}.tgz" ]] \
             || fail "Tarball '${TARBALL}' is not singleton-sd-leasemate-assets-${VERSION}.tgz."
@@ -251,12 +262,15 @@ jobs:
           cmp -s <(grep -vE "${version_line}" "${files}/package.json") \
             <(grep -vE "${version_line}" "${head_pkg}") \
             || fail "Prepared package.json changes more than the version line."
+          git cat-file -e "${PREPARED_SHA}:CHANGELOG.md" \
+            || fail "CHANGELOG.md is missing at ${PREPARED_SHA}."
           old="$(mktemp)"; new="$(mktemp)"
-          git show "${PREPARED_SHA}:CHANGELOG.md" > "${old}" 2>/dev/null || : > "${old}"
+          git show "${PREPARED_SHA}:CHANGELOG.md" > "${old}"
           cp "${files}/CHANGELOG.md" "${new}"
-          if [[ "$(head -n1 "${old}")" == "# "* && "$(head -n1 "${new}")" == "$(head -n1 "${old}")" ]]; then
-            sed -i 1d "${old}" "${new}"
-          fi
+          [[ -s "${old}" && -s "${new}" ]] || fail "CHANGELOG.md is empty."
+          [[ "$(head -n1 "${old}")" == "$(head -n1 "${new}")" ]] \
+            || fail "CHANGELOG.md title must be byte-identical to ${PREPARED_SHA}."
+          sed -i 1d "${old}" "${new}"
           n="$(wc -l < "${old}")"
           (( n == 0 )) || tail -n "${n}" "${new}" | cmp -s - "${old}" \
             || fail "CHANGELOG.md changes existing lines; only new lines at the top are allowed."
@@ -264,6 +278,19 @@ jobs:
           tar -xOzf "${files}/${TARBALL}" package/package.json > "${tar_pkg}"
           cmp -s "${tar_pkg}" "${files}/package.json" \
             || fail "Tarball package.json does not match the prepared package.json."
+          ver_re="$(printf '%s' "${VERSION}" | sed -e 's/[][().*^$+?{|]/\\&/g')"
+          derived="${RUNNER_TEMP}/github-release-notes.md"
+          awk -v ver_re="${ver_re}" '
+            /^## / {
+              if (found) exit
+              if ($0 ~ "^## \\[" ver_re "\\]" || $0 ~ "^## " ver_re "([ (]|$)") found=1
+              else next
+            }
+            found { print }
+          ' "${files}/CHANGELOG.md" > "${derived}"
+          [[ -s "${derived}" ]] || fail "CHANGELOG.md has no ## section for ${VERSION}."
+          cmp -s "${derived}" "${files}/release-notes.md" \
+            || fail "release-notes.md does not match the CHANGELOG section for ${VERSION}."
 
       - name: Commit and tag the prepared release
         id: plan
@@ -357,5 +384,5 @@ jobs:
             exit 0
           fi
           gh release create "${VERSION}" --verify-tag --title "v${VERSION}" \
-            --notes-file "${RUNNER_TEMP}/release-files/release-notes.md" \
+            --notes-file "${RUNNER_TEMP}/github-release-notes.md" \
             -R "$GH_REPO"
