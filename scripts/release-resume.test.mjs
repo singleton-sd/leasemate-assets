@@ -129,6 +129,37 @@ test("rerun after a successful push resumes without replacing the tag", () => {
   }
 });
 
+test("chore(release) tag must be an ancestor of main and is not force-moved", () => {
+  const cwd = initRepo();
+  try {
+    const prepareSha = git(cwd, ["rev-parse", "HEAD"]);
+    writeFileSync(join(cwd, "package.json"), '{"version":"0.1.1"}\n');
+    git(cwd, ["add", "package.json"]);
+    git(cwd, ["commit", "--no-verify", "-m", RELEASE_MESSAGE]);
+    git(cwd, ["tag", "-a", VERSION, "-m", `v${VERSION}`]);
+    const tagCommit = git(cwd, ["rev-parse", `${VERSION}^{commit}`]);
+    const tagSha = git(cwd, ["rev-parse", `refs/tags/${VERSION}`]);
+    assert.equal(git(cwd, ["log", "-1", "--format=%s", tagCommit]), RELEASE_MESSAGE);
+    const ancestor = spawnSync(
+      "git",
+      ["merge-base", "--is-ancestor", tagCommit, "main"],
+      { cwd },
+    );
+    assert.equal(ancestor.status, 0);
+    assert.equal(git(cwd, ["rev-parse", `${tagCommit}^`]), prepareSha);
+    const second = spawnSync(
+      process.execPath,
+      [SCRIPT, "plan", VERSION, prepareSha],
+      { cwd, encoding: "utf8" },
+    );
+    assert.equal(second.status, 0, second.stderr);
+    assert.equal(second.stdout.trim(), "resume");
+    assert.equal(git(cwd, ["rev-parse", `refs/tags/${VERSION}`]), tagSha);
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
+
 test("CLI plan is create when the tag was never pushed", () => {
   const cwd = initRepo();
   try {

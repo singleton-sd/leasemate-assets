@@ -163,13 +163,26 @@ test("release.yml splits prepare from publish and never embeds the token in orig
   assert.match(jobs.publish, /id-token: write/);
   assert.doesNotMatch(jobs.publish, /pnpm install/);
   assert.doesNotMatch(jobs.publish, /pnpm (validate|test|build|release)/);
-  assert.match(jobs.publish, /node scripts\/release-resume\.mjs plan/);
-  assert.doesNotMatch(jobs.publish, /node scripts\/(?!release-resume\.mjs)/);
+  assert.doesNotMatch(jobs.publish, /node scripts\//);
   assert.doesNotMatch(jobs.publish, /git tag -f/);
   assert.doesNotMatch(jobs.publish, /git push --force|\sgit push -f\s/);
-  assert.match(jobs.publish, /PLAN: \$\{\{ steps\.release\.outputs\.plan \}\}/);
-  assert.match(jobs.publish, /npm view "@singleton-sd\/leasemate-assets@\$\{VERSION\}"/);
-  assert.match(jobs.publish, /gh release view "\$VERSION"/);
+  assert.match(jobs.publish, /PUSH: \$\{\{ steps\.plan\.outputs\.push \}\}/);
+  assert.match(jobs.publish, /gh release view "\$\{VERSION\}"/);
+  assert.match(jobs.publish, /working-directory: \$\{\{ runner\.temp \}\}/);
+  assert.match(jobs.publish, /git merge-base --is-ancestor/);
+  assert.match(
+    jobs.publish,
+    /chore\(release\): v\$\{VERSION\} \[skip ci\]/,
+  );
+  assert.match(jobs.publish, /singleton-sd-leasemate-assets-\$\{VERSION\}\.tgz/);
+  assert.match(jobs.publish, /git show "\$\{PREPARED_SHA\}:package\.json"/);
+  assert.doesNotMatch(jobs.publish, /jq -S/);
+  assert.match(jobs.publish, /version_line=/);
+  assert.match(jobs.publish, /tar -xOzf/);
+  assert.match(jobs.publish, /find \. -mindepth 1 -printf '%y %P\\n'/);
+  assert.match(jobs.publish, /minus \+build metadata/);
+  assert.match(yaml, /recover_version:/);
+  assert.match(jobs.prepare, /echo "recover=\$\{recover\}"/);
   assert.doesNotMatch(yaml, /x-access-token:\$\{/);
   assert.match(
     yaml,
@@ -193,17 +206,54 @@ test("release.yml splits prepare from publish and never embeds the token in orig
     "GitHub Release tag must match the unprefixed git tag",
   );
   assert.doesNotMatch(jobs.publish, /gh release create "v\$\{VERSION\}"/);
-  assert.match(jobs.prepare, /echo "sha=\$\(git rev-parse HEAD\)"/);
-  assert.match(
-    jobs.publish,
-    /ref: \$\{\{ needs\.prepare\.outputs\.sha \}\}/,
-  );
+  assert.match(jobs.prepare, /sha="\$\(git rev-parse HEAD\)"/);
+  assert.match(jobs.publish, /ref: main/);
+  assert.match(jobs.publish, /PREPARED_SHA: \$\{\{ needs\.prepare\.outputs\.sha \}\}/);
   assert.doesNotMatch(jobs.publish, /git checkout -B main origin\/main/);
   assert.match(jobs.publish, /356768209\+singleton-release\[bot\]@users\.noreply\.github\.com/);
   const npmIdx = jobs.publish.indexOf("npm publish");
   const releaseIdx = jobs.publish.indexOf("gh release create");
   assert.ok(npmIdx >= 0 && releaseIdx > npmIdx, "npm publish before gh release create");
   assert.match(jobs.prepare, /awk '\/\^## \//);
+});
+
+test("release.yml publish invokes no node/pnpm/npx before or after mint", async () => {
+  const yaml = await readFile(RELEASE, "utf8");
+  const jobs = jobBlocks(yaml);
+  const mint = jobs.publish.indexOf("create-github-app-token");
+  assert.ok(mint > 0, "publish must mint an App token");
+  const invoke = /(?:^|[\n\t '"=])(?:node|pnpm|npx)(?:[\n\t ]|$)/m;
+  assert.doesNotMatch(jobs.publish.slice(0, mint), invoke);
+  assert.doesNotMatch(jobs.publish.slice(mint), invoke);
+  assert.ok(
+    jobs.publish.indexOf("Verify prepared release") < mint,
+    "artifact verification must finish before minting",
+  );
+  assert.ok(
+    jobs.publish.indexOf("git tag -a") < mint,
+    "local tag is created before minting",
+  );
+});
+
+test("snapshot.yml verifies chore(release) ancestry before repo code and mint", async () => {
+  const yaml = await readFile(SNAPSHOT, "utf8");
+  const jobs = jobBlocks(yaml);
+  const install = jobs.build.indexOf("pnpm install");
+  const verify = jobs.build.indexOf("git merge-base --is-ancestor");
+  assert.ok(verify >= 0 && verify < install);
+  assert.match(
+    jobs.build,
+    /chore\(release\): v\$\{VERSION\} \[skip ci\]/,
+  );
+  assert.match(jobs.publish, /git merge-base --is-ancestor/);
+  assert.match(
+    jobs.publish,
+    /chore\(release\): v\$\{VERSION\} \[skip ci\]/,
+  );
+  const mint = jobs.publish.indexOf("create-github-app-token");
+  assert.ok(jobs.publish.indexOf("git merge-base --is-ancestor") < mint);
+  const invoke = /(?:^|[\n\t '"=])(?:node|pnpm|npx)(?:[\n\t ]|$)/m;
+  assert.doesNotMatch(jobs.publish, invoke);
 });
 
 test("release-it commits and pushes with --no-verify", () => {
