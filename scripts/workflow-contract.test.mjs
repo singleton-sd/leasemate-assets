@@ -145,8 +145,10 @@ test("snapshot.yml takes the tag from the event or input and does not clobber", 
     /GH_TOKEN: \$\{\{ steps\.app-token\.outputs\.token \}\}/,
   );
   assert.match(jobs.publish, /GH_REPO: \$\{\{ github\.repository \}\}/);
-  assert.match(jobs.publish, /-R "\$GH_REPO"/);
+  assert.match(jobs.publish, /-R "\$\{GH_REPO\}"/);
   assert.match(jobs.publish, /sha256sum --check --strict/);
+  assert.match(jobs.publish, /exactly one checksum record/);
+  assert.match(jobs.publish, /skipping upload/);
   assert.match(
     jobs.publish,
     /\$\{product_id\}-assets-\$\{VERSION\}\.tar\.gz/,

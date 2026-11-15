@@ -189,6 +189,18 @@ jobs:
             || fail "${archive} is not a regular file."
           [[ -f "${files}/${archive}.sha256" && ! -L "${files}/${archive}.sha256" ]] \
             || fail "${archive}.sha256 is not a regular file."
+          [[ "$(grep -cve '^[[:space:]]*$' "${files}/${archive}.sha256")" == 1 ]] \
+            || fail "${archive}.sha256 must contain exactly one checksum record."
+          named="$(awk 'NF {
+            if (NF != 2) exit 2
+            f=$2
+            sub(/^\*/, "", f)
+            print f
+            exit
+          }' "${files}/${archive}.sha256")" \
+            || fail "${archive}.sha256 is not a single GNU sha256sum record."
+          [[ "${named}" == "${archive}" ]] \
+            || fail "${archive}.sha256 names '${named}', not ${archive}."
           (cd "${files}" && sha256sum --check --strict "${archive}.sha256")
           echo "archive=${archive}" >> "$GITHUB_OUTPUT"
       - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -207,12 +219,33 @@ jobs:
           ARCHIVE: ${{ steps.archive.outputs.archive }}
         run: |
           set -euo pipefail
+          fail() { echo "::error::$*" >&2; exit 1; }
           files="${RUNNER_TEMP}/snapshot-archives"
-          gh release upload "$RELEASE_TAG" \
-            "${files}/${ARCHIVE}" \
-            "${files}/${ARCHIVE}.sha256" \
-            dist/manifest.json \
-            -R "$GH_REPO"
+          local_paths=(
+            "${files}/${ARCHIVE}"
+            "${files}/${ARCHIVE}.sha256"
+            "dist/manifest.json"
+          )
+          existing="$(gh release view "${RELEASE_TAG}" -R "${GH_REPO}" --json assets --jq '.assets[].name')"
+          to_upload=()
+          for path in "${local_paths[@]}"; do
+            [[ -f "${path}" && ! -L "${path}" ]] || fail "${path} is not a regular file."
+            name="$(basename "${path}")"
+            if printf '%s\n' "${existing}" | grep -Fxq -- "${name}"; then
+              tmp="$(mktemp)"
+              gh release download "${RELEASE_TAG}" -R "${GH_REPO}" -p "${name}" -O "${tmp}"
+              cmp -s "${tmp}" "${path}" \
+                || fail "GitHub Release asset ${name} differs from the verified local file."
+              echo "Release already has identical ${name}; skipping upload."
+            else
+              to_upload+=("${path}")
+            fi
+          done
+          if ((${#to_upload[@]})); then
+            gh release upload "${RELEASE_TAG}" "${to_upload[@]}" -R "${GH_REPO}"
+          else
+            echo "All snapshot assets already on the GitHub Release."
+          fi
       # Site root (latest catalog) is published from main by pages.yml.
       # A tagged historical backfill must not deploy its dist to root.
       - name: Publish immutable version directory
