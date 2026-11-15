@@ -2,7 +2,8 @@
 # published from snapshot.yml on `release: published` (not tag push: the
 # release commit is `chore(release): vX [skip ci]`).
 #
-# Build is unauthenticated (contents: read, no secrets). Publish mints the
+# Build is unauthenticated (contents: read, no secrets). Publish checks out
+# for JamesIves (needs a git directory), downloads dist, then mints the
 # singleton-release App token as its last setup step and deploys with that
 # token only — never GITHUB_TOKEN.
 name: Publish Pages catalog
@@ -53,6 +54,9 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: pages-dist

@@ -33,6 +33,14 @@ function jobBlocks(yaml) {
   return jobs;
 }
 
+/**
+ * @param {string} job
+ * @returns {string[]}
+ */
+function stepUses(job) {
+  return [...job.matchAll(/^\s+- uses: (\S+)/gm)].map((match) => match[1]);
+}
+
 test("pages.yml and snapshot.yml share pages-publish with queue: max", async () => {
   const pages = parseWorkflowConcurrency(await readFile(PAGES, "utf8"));
   const snapshot = parseWorkflowConcurrency(await readFile(SNAPSHOT, "utf8"));
@@ -100,6 +108,12 @@ test("pages.yml and snapshot.yml mint the App token only in publish", async () =
     assert.doesNotMatch(jobs.publish, /node scripts\//);
     assert.doesNotMatch(jobs.publish, /github\.token/);
     assert.doesNotMatch(jobs.publish, /GITHUB_TOKEN/);
+    assert.equal(
+      stepUses(jobs.publish)[0]?.split("@")[0],
+      "actions/checkout",
+      `${file} publish must checkout first so JamesIves has a git directory`,
+    );
+    assert.match(jobs.publish, /persist-credentials:\s*false/);
   }
 });
 
@@ -114,17 +128,27 @@ test("snapshot.yml passes the archive to gh via env, not interpolation", async (
     jobs.publish,
     /GH_TOKEN: \$\{\{ steps\.app-token\.outputs\.token \}\}/,
   );
+  assert.match(
+    jobs.publish,
+    /GH_REPO: \$\{\{ github\.repository \}\}/,
+  );
+  assert.match(jobs.publish, /-R "\$GH_REPO"/);
+  assert.match(jobs.publish, /sha256sum --check --strict "\$ARCHIVE\.sha256"/);
   assert.doesNotMatch(jobs.publish, /steps\.pkg\.outputs\.archive/);
 });
 
 test("release.yml splits prepare from publish and never embeds the token in origin", async () => {
   const yaml = await readFile(RELEASE, "utf8");
+  const header = yaml.split(/\njobs:\n/)[0] ?? "";
   assert.match(yaml, /^  contents: read/m);
+  assert.doesNotMatch(header, /id-token:/);
   const jobs = jobBlocks(yaml);
   assert.match(jobs.prepare, /pnpm install/);
   assert.doesNotMatch(jobs.prepare, /create-github-app-token/);
   assert.doesNotMatch(jobs.prepare, /RELEASE_APP_PRIVATE_KEY/);
+  assert.doesNotMatch(jobs.prepare, /id-token:/);
   assert.match(jobs.publish, /create-github-app-token/);
+  assert.match(jobs.publish, /id-token: write/);
   assert.doesNotMatch(jobs.publish, /pnpm install/);
   assert.doesNotMatch(jobs.publish, /pnpm (validate|test|build|release)/);
   assert.doesNotMatch(yaml, /x-access-token:\$\{/);
@@ -135,13 +159,32 @@ test("release.yml splits prepare from publish and never embeds the token in orig
   assert.match(yaml, /::add-mask::/);
   assert.match(jobs.publish, /GH_TOKEN: \$\{\{ steps\.app-token\.outputs\.token \}\}/);
   assert.doesNotMatch(jobs.publish, /GITHUB_TOKEN: \$\{\{ steps\.app-token/);
-  assert.match(jobs.publish, /git tag "\$\{VERSION\}"/);
+  assert.doesNotMatch(jobs.publish, /github\.token/);
+  assert.doesNotMatch(jobs.publish, /GH_API_TOKEN/);
+  assert.match(
+    jobs.publish,
+    /git tag -a "\$\{VERSION\}" -m "v\$\{VERSION\}"/,
+  );
+  assert.doesNotMatch(jobs.publish, /git tag "\$\{VERSION\}"/);
+  assert.match(jobs.publish, /"refs\/tags\/\$\{VERSION\}"/);
+  assert.doesNotMatch(jobs.publish, /--follow-tags/);
   assert.match(
     jobs.publish,
     /gh release create "\$\{VERSION\}"/,
     "GitHub Release tag must match the unprefixed git tag",
   );
   assert.doesNotMatch(jobs.publish, /gh release create "v\$\{VERSION\}"/);
+  assert.match(jobs.prepare, /echo "sha=\$\(git rev-parse HEAD\)"/);
+  assert.match(
+    jobs.publish,
+    /ref: \$\{\{ needs\.prepare\.outputs\.sha \}\}/,
+  );
+  assert.doesNotMatch(jobs.publish, /git checkout -B main origin\/main/);
+  assert.match(jobs.publish, /356768209\+singleton-release\[bot\]@users\.noreply\.github\.com/);
+  const npmIdx = jobs.publish.indexOf("npm publish");
+  const releaseIdx = jobs.publish.indexOf("gh release create");
+  assert.ok(npmIdx >= 0 && releaseIdx > npmIdx, "npm publish before gh release create");
+  assert.match(jobs.prepare, /awk '\/\^## \//);
 });
 
 test("release-it commits and pushes with --no-verify", () => {
@@ -149,13 +192,25 @@ test("release-it commits and pushes with --no-verify", () => {
   assert.ok(releaseIt.git.pushArgs.includes("--no-verify"));
   assert.ok(releaseIt.git.pushArgs.includes("--follow-tags"));
   assert.ok(releaseIt.git.pushArgs.includes("--atomic"));
+  assert.equal(releaseIt.git.tagAnnotation, "v${version}");
 });
 
-test("release.yml bot lookup disables curl globbing for [bot]", async () => {
-  const yaml = await readFile(RELEASE, "utf8");
-  assert.match(yaml, /curl[^\n]*--globoff/);
-  assert.match(yaml, /singleton-release\[bot\]/);
+test("every publish job has a checkout or GH_REPO", async () => {
+  for (const file of [PAGES, SNAPSHOT, RELEASE]) {
+    const yaml = await readFile(file, "utf8");
+    const jobs = jobBlocks(yaml);
+    const hasCheckout = /actions\/checkout@/.test(jobs.publish);
+    const hasGhRepo = /GH_REPO: \$\{\{ github\.repository \}\}/.test(
+      jobs.publish,
+    );
+    assert.ok(
+      hasCheckout || hasGhRepo,
+      `${file} publish needs actions/checkout or GH_REPO`,
+    );
+  }
+});
 
+test("curl globbing would break singleton-release[bot] lookups", () => {
   const globOn = spawnSync(
     "curl",
     ["--silent", "--show-error", "--head", "--max-time", "2", BOT_URL],

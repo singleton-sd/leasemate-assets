@@ -18,12 +18,16 @@ splits prepare (no App token) from publish:
 1. Compute the next version from the latest `X.Y.Z` tag plus conventional
    commits. Git tags in this repo are unprefixed (`0.1.0`); GitHub Release
    titles use `vX.Y.Z`.
-2. Bump `package.json` and write `CHANGELOG.md`.
-3. The publish job commits `chore(release): vX.Y.Z [skip ci]`, tags, and
-   pushes to `main` with the App token in `git extraheader` (not the origin URL).
+2. Bump `package.json` and write `CHANGELOG.md`. Record the `origin/main` SHA.
+3. The publish job checks out that SHA (not a later `origin/main`), commits
+   `chore(release): vX.Y.Z [skip ci]`, creates an annotated `X.Y.Z` tag, and
+   pushes `HEAD:main` plus `refs/tags/X.Y.Z` with the App token in
+   `git extraheader` (not the origin URL). A non-fast-forward push fails
+   rather than overwriting `package.json`.
 4. Publish `@singleton-sd/leasemate-assets` to npm via Trusted Publishing (OIDC).
    Do not add `NPM_TOKEN`.
-5. Create a GitHub Release with `gh release create`.
+5. Create a GitHub Release with `gh release create`, including the latest
+   CHANGELOG section in the notes.
 6. `.github/workflows/snapshot.yml` runs on `release: published` (not tag
    push). It publishes an immutable `gh-pages` snapshot at
    `/releases/<tag>/`, refuses to overwrite that directory if it already

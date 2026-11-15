@@ -6,9 +6,9 @@
 # or a PAT for that push (GITHUB_TOKEN cannot bypass the CodeRabbit ruleset).
 #
 # prepare: checkout, install, validate/test/build/sync, and bump files with
-# no App token and no secrets. publish: no install / no repo scripts; mint
-# the App token last, then git push via extraheader, gh release create, and
-# npm publish --ignore-scripts.
+# no App token and no secrets. publish: no install / no node scripts; mint
+# the App token last, then git push via extraheader, npm publish
+# --ignore-scripts, and gh release create.
 name: Release
 
 on:
@@ -22,7 +22,6 @@ concurrency:
 
 permissions:
   contents: read # default token is not used for the push
-  id-token: write # npm Trusted Publishing (OIDC) on the publish job
 
 jobs:
   prepare:
@@ -32,6 +31,7 @@ jobs:
       contents: read
     outputs:
       version: ${{ steps.bump.outputs.version }}
+      sha: ${{ steps.revision.outputs.sha }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -39,10 +39,12 @@ jobs:
           persist-credentials: false
 
       - name: Select release revision
+        id: revision
         run: |
           set -euo pipefail
           git fetch origin main --tags
           git checkout -B main origin/main
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
         with:
@@ -74,9 +76,9 @@ jobs:
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           npm pack --ignore-scripts
           {
-            echo "Release v${version}."
-            echo
             echo "📦 [\`@singleton-sd/leasemate-assets@${version}\`](https://www.npmjs.com/package/@singleton-sd/leasemate-assets/v/${version})"
+            echo
+            awk '/^## / { if (found) exit; found=1 } found { print }' CHANGELOG.md
           } > release-notes.md
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -95,18 +97,21 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      id-token: write
+      id-token: write # npm Trusted Publishing (OIDC)
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
+          ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Select main
+      - name: Point local main at the prepared revision
+        env:
+          PREPARE_SHA: ${{ needs.prepare.outputs.sha }}
         run: |
           set -euo pipefail
-          git fetch origin main --tags
-          git checkout -B main origin/main
+          test "$(git rev-parse HEAD)" = "$PREPARE_SHA"
+          git checkout -B main
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -133,24 +138,17 @@ jobs:
       - name: Apply bump, commit, and tag
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
-          GH_API_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           cp release-files/package.json package.json
           cp release-files/CHANGELOG.md CHANGELOG.md
-          user_id="$(curl -fsSL --globoff \
-            -H "Authorization: Bearer ${GH_API_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/users/singleton-release[bot]" | jq -r .id)"
-          if [[ -z "${user_id}" || "${user_id}" == "null" ]]; then
-            echo "::error::Could not resolve GitHub user id for singleton-release[bot]." >&2
-            exit 1
-          fi
+          # singleton-release[bot] user id 356768209 — static so commit
+          # does not look up the bot over the API before the App token exists.
           git config user.name "singleton-release[bot]"
-          git config user.email "${user_id}+singleton-release[bot]@users.noreply.github.com"
+          git config user.email "356768209+singleton-release[bot]@users.noreply.github.com"
           git add package.json CHANGELOG.md
           git commit --no-verify -m "chore(release): v${VERSION} [skip ci]"
-          git tag "${VERSION}"
+          git tag -a "${VERSION}" -m "v${VERSION}"
 
       - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         id: app-token
@@ -164,23 +162,13 @@ jobs:
       - name: Push release commit and tag
         env:
           APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           set -euo pipefail
           auth="$(printf 'x-access-token:%s' "${APP_TOKEN}" | base64 | tr -d '\n')"
           echo "::add-mask::${auth}"
           git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth}" \
-            push origin HEAD:main --follow-tags --atomic --no-verify
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          set -euo pipefail
-          gh release create "${VERSION}" \
-            --title "v${VERSION}" \
-            --target main \
-            --notes-file release-files/release-notes.md
+            push --atomic --no-verify origin HEAD:main "refs/tags/${VERSION}"
 
       - name: Publish to npm
         env:
@@ -191,3 +179,16 @@ jobs:
             "release-files/singleton-sd-leasemate-assets-${VERSION}.tgz" \
             --ignore-scripts \
             --access public
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          gh release create "${VERSION}" \
+            --title "v${VERSION}" \
+            --target main \
+            --notes-file release-files/release-notes.md \
+            -R "$GH_REPO"

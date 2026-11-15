@@ -1,12 +1,13 @@
 # Immutable /releases/<tag>/ snapshot + GitHub Release archives.
-# Triggered by the GitHub Release that release-it opens — not by tag push —
+# Triggered by the GitHub Release that release.yml opens — not by tag push —
 # because the release commit message contains `[skip ci]`.
 # Latest catalog (site root) is pages.yml from main — this job never
 # deploys a tagged dist there, including workflow_dispatch backfills.
 #
-# Build is unauthenticated (contents: read, no secrets). Publish mints the
-# singleton-release App token as its last setup step and uses it for
-# `gh release upload` and the gh-pages snapshot — never GITHUB_TOKEN.
+# Build is unauthenticated (contents: read, no secrets). Publish checks out
+# for JamesIves and gh, downloads artifacts, then mints the singleton-release
+# App token as its last setup step and uses it for `gh release upload` and
+# the gh-pages snapshot — never GITHUB_TOKEN.
 name: Publish version snapshot
 
 on:
@@ -110,6 +111,10 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ needs.build.outputs.tag }}
+          persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: snapshot-dist
@@ -129,14 +134,17 @@ jobs:
       - name: Attach archive, checksum, and manifest to the GitHub Release
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ needs.build.outputs.tag }}
           ARCHIVE: ${{ needs.build.outputs.archive }}
         run: |
           set -euo pipefail
+          sha256sum --check --strict "$ARCHIVE.sha256"
           gh release upload "$RELEASE_TAG" \
             "$ARCHIVE" \
             "$ARCHIVE.sha256" \
             dist/manifest.json \
+            -R "$GH_REPO" \
             --clobber
       # Site root (latest catalog) is published from main by pages.yml.
       # A tagged historical backfill must not deploy its dist to root.

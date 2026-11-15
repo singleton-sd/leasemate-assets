@@ -6,8 +6,9 @@
  *
  * Validate, test, build, and sync run in the prepare job before any App
  * token exists. The publish job mints the token last and pushes with
- * git extraheader (never a token in the origin URL). npm publish uses
- * --ignore-scripts so lifecycle hooks do not run with that token set.
+ * git extraheader (never a token in the origin URL). Local tags use
+ * annotation `v${version}`. npm publish uses --ignore-scripts so
+ * lifecycle hooks do not run with that token set.
  *
  * @typedef {import('release-it').Config} ReleaseItConfig
  * @type {ReleaseItConfig}
@@ -16,6 +17,7 @@ export default {
   git: {
     commitMessage: "chore(release): v${version} [skip ci]",
     tagName: "${version}",
+    tagAnnotation: "v${version}",
     requireBranch: "main",
     requireCleanWorkingDir: true,
     commit: true,
