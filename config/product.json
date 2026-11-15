@@ -1,0 +1,10 @@
+{
+  "id": "leasemate",
+  "name": "LeaseMate",
+  "shortName": "LeaseMate",
+  "parentBrand": "Singleton SD",
+  "publicUrl": "https://assets.leasemate.poc.singletonsd.com",
+  "themeColor": "#FFB300",
+  "backgroundColor": "#000000",
+  "cdnNote": "gh-pages serves dist/ at site root plus immutable /releases/<tag>/ snapshots under assets.leasemate.poc.singletonsd.com (CNAME → singleton-sd.github.io)."
+}

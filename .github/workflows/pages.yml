@@ -1,0 +1,81 @@
+# Latest catalog on gh-pages. Immutable /releases/<tag>/ snapshots are
+# published from snapshot.yml on `release: published` (not tag push: the
+# release commit is `chore(release): vX [skip ci]`).
+#
+# Build is unauthenticated (contents: read, no secrets). Publish checks out
+# for JamesIves (needs a git directory), downloads dist, then mints the
+# singleton-release App token as its last setup step and deploys with that
+# token only — never GITHUB_TOKEN.
+name: Publish Pages catalog
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: pages-publish
+  cancel-in-progress: false
+  # Keep pending snapshot runs when a later Pages job arrives (GitHub's
+  # default queue is one pending run, which would replace the snapshot).
+  queue: max
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+        with:
+          version: 11.22.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm validate
+      - run: pnpm test
+      - run: pnpm build
+        env:
+          CI: "true"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pages-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: pages-dist
+          path: dist
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: singleton-sd
+          repositories: leasemate-assets
+          permission-contents: write
+      - name: Publish current catalog
+        uses: JamesIves/github-pages-deploy-action@d92aa235d04922e8f08b40ce78cc5442fcfbfa2f # v4.8.0
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          branch: gh-pages
+          folder: dist
+          clean: true
+          clean-exclude: |
+            releases
+            CNAME

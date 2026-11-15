@@ -1,0 +1,361 @@
+# Release: bump version + CHANGELOG.md, commit and push to main, tag,
+# publish to npm (OIDC Trusted Publishing), and open a GitHub Release.
+#
+# prepare: untrusted (install, bump, validate/test/build, pack). No secrets,
+# no App token, no id-token. publish: no repo code (no node/pnpm/npx, no
+# install). It verifies prepare's artifact with bash/git/jq/tar, then mints
+# the singleton-release App token last and pushes via extraheader.
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      recover_version:
+        description: Version whose tag is on GitHub but whose npm publish or GitHub Release did not finish
+        required: false
+        default: ""
+      recover_sha:
+        description: Source commit the failed run prepared (the parent of the release commit)
+        required: false
+        default: ""
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    # Untrusted: dependency and repo scripts run here. No secrets, App token, or id-token.
+    if: "${{ github.event_name == 'workflow_dispatch' || !startsWith(github.event.head_commit.message, 'chore(release):') }}"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.rev.outputs.sha }}
+      recover: ${{ steps.rev.outputs.recover }}
+      version: ${{ steps.pack.outputs.version }}
+      package: ${{ steps.pack.outputs.package }}
+      tarball: ${{ steps.pack.outputs.tarball }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Select release revision
+        id: rev
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RECOVER_VERSION: ${{ inputs.recover_version }}
+          RECOVER_SHA: ${{ inputs.recover_sha }}
+          DEFAULT_BRANCH: main
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$*" >&2; exit 1; }
+          sha="$(git rev-parse HEAD)"
+          recover=false
+          if [[ -n "${RECOVER_VERSION}${RECOVER_SHA}" ]]; then
+            [[ "${EVENT_NAME}" == workflow_dispatch && -n "${RECOVER_VERSION}" && -n "${RECOVER_SHA}" ]] \
+              || fail "Recovery needs a workflow_dispatch with both recover_version and recover_sha."
+            tag_commit="$(git rev-parse -q --verify "refs/tags/${RECOVER_VERSION}^{commit}")" \
+              || fail "Tag ${RECOVER_VERSION} does not exist; nothing to recover."
+            [[ "$(git rev-parse "${tag_commit}^")" == "${RECOVER_SHA}" ]] \
+              || fail "Tag ${RECOVER_VERSION} is not the release commit on top of ${RECOVER_SHA}."
+            [[ "$(git log -1 --format=%s "${tag_commit}")" == "chore(release): v${RECOVER_VERSION} [skip ci]" ]] \
+              || fail "Tag ${RECOVER_VERSION} does not point at a release commit."
+            git merge-base --is-ancestor "${tag_commit}" "refs/remotes/origin/${DEFAULT_BRANCH}" \
+              || fail "Tag ${RECOVER_VERSION} is not on ${DEFAULT_BRANCH}; refusing to recover it."
+            git checkout --quiet --detach "${tag_commit}"
+            sha="${RECOVER_SHA}"
+            recover=true
+          fi
+          echo "Preparing ${sha} (recover_sha if this release does not finish)"
+          echo "sha=${sha}" >> "$GITHUB_OUTPUT"
+          echo "recover=${recover}" >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@a7487c7e89a18df4991f7f222e4898a00d66ddda # v4
+        with:
+          version: 11.22.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: pnpm
+          # Do NOT set registry-url — breaks OIDC Trusted Publishing.
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Bump version and changelog
+        env:
+          RECOVER: ${{ steps.rev.outputs.recover }}
+        run: |
+          set -euo pipefail
+          [[ "${RECOVER}" == true ]] || pnpm release:bump
+
+      - name: Validate, test, build, and sync
+        run: |
+          set -euo pipefail
+          pnpm sync:legacy-svg
+          pnpm validate
+          pnpm test
+          pnpm build
+          pnpm run --if-present prepublishOnly
+
+      - name: Pack
+        id: pack
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$*" >&2; exit 1; }
+          version="$(node -p 'require("./package.json").version')"
+          # Official SemVer 2.0.0 minus +build metadata (semver.org), POSIX ERE.
+          semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?$'
+          [[ "${version}" =~ ${semver} ]] || fail "package.json has no valid SemVer version: '${version}'."
+          [[ "${version}" != *+* ]] || fail "package.json version has +build metadata: '${version}'."
+          out="${RUNNER_TEMP}/release-files"
+          mkdir -p "${out}"
+          pnpm run --if-present prepack
+          tarball="$(npm pack --ignore-scripts --pack-destination "${out}" | tail -n1)"
+          expected="singleton-sd-leasemate-assets-${version}.tgz"
+          [[ "${tarball}" == "${expected}" ]] || fail "Tarball '${tarball}' is not ${expected}."
+          cp package.json CHANGELOG.md "${out}/"
+          awk '/^## / { if (found) exit; found=1 } found { print }' CHANGELOG.md > "${out}/release-notes.md"
+          {
+            echo "version=${version}"
+            echo "package=$(node -p 'require("./package.json").name')"
+            echo "tarball=${tarball}"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-files
+          path: ${{ runner.temp }}/release-files/
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    # Runs no repo code: no install, no node/pnpm/npx, no repo scripts or hooks.
+    needs: prepare
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Require singleton-release GitHub App credentials
+        env:
+          RELEASE_APP_ID: ${{ vars.RELEASE_APP_ID }}
+          RELEASE_APP_PRIVATE_KEY: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${RELEASE_APP_ID}" ]]; then
+            echo "::error::vars.RELEASE_APP_ID is not set." >&2
+            exit 1
+          fi
+          if [[ -z "${RELEASE_APP_PRIVATE_KEY}" ]]; then
+            echo "::error::secrets.RELEASE_APP_PRIVATE_KEY is not set. No job-token or PAT fallback." >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: release-files
+          path: ${{ runner.temp }}/release-files
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          # No cache and no registry-url: nothing is installed from the repo.
+
+      - name: Upgrade npm for OIDC publish
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          npm install -g npm@11.5.1
+          npm --version
+          for npmrc in "${RUNNER_TEMP}/release-files/.npmrc" "$(npm config get userconfig)" "$(npm config get globalconfig)"; do
+            if [[ -f "$npmrc" ]] && grep -qE 'always-auth|^//registry\.npmjs\.org|_authToken' "$npmrc"; then
+              echo "Refusing to publish with an auth .npmrc: $npmrc" >&2
+              exit 1
+            fi
+          done
+
+      - name: Verify prepared release
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PACKAGE: ${{ needs.prepare.outputs.package }}
+          TARBALL: ${{ needs.prepare.outputs.tarball }}
+          PREPARED_SHA: ${{ needs.prepare.outputs.sha }}
+          RECOVER: ${{ needs.prepare.outputs.recover }}
+          EVENT_NAME: ${{ github.event_name }}
+          RECOVER_VERSION: ${{ inputs.recover_version }}
+          RECOVER_SHA: ${{ inputs.recover_sha }}
+          DEFAULT_BRANCH: main
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$*" >&2; exit 1; }
+          files="${RUNNER_TEMP}/release-files"
+          # Official SemVer 2.0.0 minus +build metadata (semver.org), POSIX ERE.
+          semver='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-((0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*))?$'
+          [[ "${VERSION}" =~ ${semver} ]] || fail "Prepared version is not SemVer: '${VERSION}'."
+          [[ "${VERSION}" != *+* ]] || fail "Prepared version has +build metadata: '${VERSION}'."
+          [[ "${PREPARED_SHA}" =~ ^[0-9a-f]{40}$ ]] || fail "Prepared sha is not a commit id."
+          [[ "${TARBALL}" == "singleton-sd-leasemate-assets-${VERSION}.tgz" ]] \
+            || fail "Tarball '${TARBALL}' is not singleton-sd-leasemate-assets-${VERSION}.tgz."
+          if [[ -n "${RECOVER_VERSION}${RECOVER_SHA}" || "${RECOVER}" != false ]]; then
+            [[ "${RECOVER}" == true && "${EVENT_NAME}" == workflow_dispatch \
+              && "${RECOVER_VERSION}" == "${VERSION}" && "${RECOVER_SHA}" == "${PREPARED_SHA}" ]] \
+              || fail "Recovery outputs do not match recover_version/recover_sha."
+            tag_commit="$(git rev-parse "refs/tags/${VERSION}^{commit}")"
+            [[ "$(git rev-parse "${tag_commit}^")" == "${PREPARED_SHA}" ]] \
+              || fail "Tag ${VERSION} is not the release commit on top of ${PREPARED_SHA}."
+            [[ "$(git log -1 --format=%s "${tag_commit}")" == "chore(release): v${VERSION} [skip ci]" ]] \
+              || fail "Tag ${VERSION} is not on a chore(release) commit."
+            git merge-base --is-ancestor "${tag_commit}" "refs/remotes/origin/${DEFAULT_BRANCH}" \
+              || fail "Tag ${VERSION} is not on ${DEFAULT_BRANCH}."
+            cmp -s "${files}/package.json" <(git show "${tag_commit}:package.json") \
+              || fail "package.json differs from tag ${VERSION}."
+            cmp -s "${files}/CHANGELOG.md" <(git show "${tag_commit}:CHANGELOG.md") \
+              || fail "CHANGELOG.md differs from tag ${VERSION}."
+          else
+            [[ "$(git rev-parse HEAD)" == "${PREPARED_SHA}" ]] \
+              || fail "${DEFAULT_BRANCH} moved after prepare; the newer run releases it."
+            git merge-base --is-ancestor "${PREPARED_SHA}" "refs/remotes/origin/${DEFAULT_BRANCH}" \
+              || fail "${PREPARED_SHA} is not on ${DEFAULT_BRANCH}."
+          fi
+          listing="$(cd "${files}" && find . -mindepth 1 -printf '%y %P\n' | LC_ALL=C sort)"
+          want="$(printf 'f %s\n' CHANGELOG.md package.json release-notes.md "${TARBALL}" | LC_ALL=C sort)"
+          [[ "${listing}" == "${want}" ]] || fail "Unexpected artifact contents: ${listing//$'\n'/, }"
+          [[ "${PACKAGE}" == "$(git show "${PREPARED_SHA}:package.json" | jq -r .name)" ]] \
+            || fail "Prepared package name '${PACKAGE}' is not the repo's."
+          [[ "$(jq -r .version "${files}/package.json")" == "${VERSION}" ]] \
+            || fail "package.json version is not ${VERSION}."
+          version_line='^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"[^"]*"[[:space:]]*,?[[:space:]]*$'
+          head_pkg="$(mktemp)"
+          git show "${PREPARED_SHA}:package.json" > "${head_pkg}"
+          [[ "$(grep -cE "${version_line}" "${files}/package.json")" == 1 ]] \
+            || fail "prepared package.json must have exactly one version line."
+          [[ "$(grep -cE "${version_line}" "${head_pkg}")" == 1 ]] \
+            || fail "HEAD package.json must have exactly one version line."
+          cmp -s <(grep -vE "${version_line}" "${files}/package.json") \
+            <(grep -vE "${version_line}" "${head_pkg}") \
+            || fail "Prepared package.json changes more than the version line."
+          old="$(mktemp)"; new="$(mktemp)"
+          git show "${PREPARED_SHA}:CHANGELOG.md" > "${old}" 2>/dev/null || : > "${old}"
+          cp "${files}/CHANGELOG.md" "${new}"
+          if [[ "$(head -n1 "${old}")" == "# "* && "$(head -n1 "${new}")" == "$(head -n1 "${old}")" ]]; then
+            sed -i 1d "${old}" "${new}"
+          fi
+          n="$(wc -l < "${old}")"
+          (( n == 0 )) || tail -n "${n}" "${new}" | cmp -s - "${old}" \
+            || fail "CHANGELOG.md changes existing lines; only new lines at the top are allowed."
+          tar_pkg="$(mktemp)"
+          tar -xOzf "${files}/${TARBALL}" package/package.json > "${tar_pkg}"
+          cmp -s "${tar_pkg}" "${files}/package.json" \
+            || fail "Tarball package.json does not match the prepared package.json."
+
+      - name: Commit and tag the prepared release
+        id: plan
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PACKAGE: ${{ needs.prepare.outputs.package }}
+          RECOVER: ${{ needs.prepare.outputs.recover }}
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$*" >&2; exit 1; }
+          files="${RUNNER_TEMP}/release-files"
+          code="$(curl -sS --connect-timeout 10 --max-time 30 -o /dev/null -w '%{http_code}' \
+            "https://registry.npmjs.org/${PACKAGE/\//%2f}/${VERSION}")" || fail "npm registry probe failed."
+          [[ "${code}" == 200 || "${code}" == 404 ]] || fail "npm registry probe returned ${code}."
+          echo "npm=${code}" >> "$GITHUB_OUTPUT"
+          if [[ "${RECOVER}" == true ]]; then
+            echo "push=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if git rev-parse -q --verify "refs/tags/${VERSION}" >/dev/null; then
+            fail "Tag ${VERSION} already exists. If its run failed, dispatch with recover_version=${VERSION} and recover_sha=$(git rev-parse "refs/tags/${VERSION}^{commit}^")."
+          fi
+          [[ "${code}" == 404 ]] || fail "${VERSION} is on npm without its tag; a maintainer investigates before any release."
+          git config --local user.name "singleton-release[bot]"
+          git config --local user.email "356768209+singleton-release[bot]@users.noreply.github.com"
+          git config --local core.hooksPath /dev/null
+          cp "${files}/package.json" "${files}/CHANGELOG.md" .
+          git add package.json CHANGELOG.md
+          git commit --quiet --no-verify -m "chore(release): v${VERSION} [skip ci]"
+          git tag -a "${VERSION}" -m "v${VERSION}"
+          echo "push=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: singleton-sd
+          repositories: leasemate-assets
+          permission-contents: write
+
+      - name: Push release commit and tag
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+          PREPARED_SHA: ${{ needs.prepare.outputs.sha }}
+          PUSH: ${{ steps.plan.outputs.push }}
+          DEFAULT_BRANCH: main
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$*" >&2; exit 1; }
+          auth="$(printf 'x-access-token:%s' "${APP_TOKEN}" | base64 -w0)"
+          echo "::add-mask::${auth}"
+          header="http.https://github.com/.extraheader=AUTHORIZATION: basic ${auth}"
+          if [[ "${PUSH}" != true ]]; then
+            remote="$(git -c "${header}" ls-remote origin "refs/tags/${VERSION}^{}" | cut -f1)"
+            [[ "${remote}" == "$(git rev-parse "refs/tags/${VERSION}^{commit}")" ]] \
+              || fail "origin's tag ${VERSION} is not the release commit checked out here."
+            echo "Recovery: tag ${VERSION} is already on origin; nothing to push."
+            exit 0
+          fi
+          tip="$(git -c "${header}" ls-remote origin "refs/heads/${DEFAULT_BRANCH}" | cut -f1)"
+          [[ "${tip}" == "${PREPARED_SHA}" ]] || fail "${DEFAULT_BRANCH} moved to ${tip}; the newer run releases it."
+          git -c "${header}" push --atomic --no-verify origin "HEAD:${DEFAULT_BRANCH}" "refs/tags/${VERSION}"
+
+      - name: Publish the prepared tarball to npm (OIDC)
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          TARBALL: ${{ needs.prepare.outputs.tarball }}
+          NPM_STATUS: ${{ steps.plan.outputs.npm }}
+        run: |
+          set -euo pipefail
+          if [[ "${NPM_STATUS}" == 200 ]]; then
+            echo "Recovery: ${VERSION} is already on npm."
+            exit 0
+          fi
+          tgz_path="${RUNNER_TEMP}/release-files/${TARBALL}"
+          cd "$(mktemp -d)"
+          npm publish "${tgz_path}" --ignore-scripts --access public
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          set -euo pipefail
+          if gh release view "${VERSION}" -R "$GH_REPO" >/dev/null 2>&1; then
+            echo "GitHub Release ${VERSION} already exists."
+            exit 0
+          fi
+          gh release create "${VERSION}" --verify-tag --title "v${VERSION}" \
+            --notes-file "${RUNNER_TEMP}/release-files/release-notes.md" \
+            -R "$GH_REPO"
