@@ -27,9 +27,10 @@ runs `pnpm release:ci` (release-it):
    push). It publishes an immutable `gh-pages` snapshot at
    `/releases/<tag>/`, refuses to overwrite that directory if it already
    exists, and attaches `leasemate-assets-<tag>.tar.gz`, the SHA-256
-   checksum, and `dist/manifest.json` to the GitHub Release. The latest
-   catalog at the Pages root is refreshed in the same job because the
-   release commit is `[skip ci]`.
+   checksum, and `dist/manifest.json` to the GitHub Release. It does not
+   deploy to the Pages root: the latest catalog is published by
+   `pages.yml` from `main`. Backfilling an older tag must not replace
+   current assets at site root.
 
 The git push uses the **singleton-release** GitHub App
 (`vars.RELEASE_APP_ID` + `secrets.RELEASE_APP_PRIVATE_KEY`), which is on the

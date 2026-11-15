@@ -108,7 +108,7 @@ jobs:
           GH_API_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          user_id="$(curl -fsSL \
+          user_id="$(curl -fsSL --globoff \
             -H "Authorization: Bearer ${GH_API_TOKEN}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/users/${APP_SLUG}[bot]" | jq -r .id)"

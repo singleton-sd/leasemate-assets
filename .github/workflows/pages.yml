@@ -11,6 +11,9 @@ on:
 concurrency:
   group: pages-publish
   cancel-in-progress: false
+  # Keep pending snapshot runs when a later Pages job arrives (GitHub's
+  # default queue is one pending run, which would replace the snapshot).
+  queue: max
 
 permissions:
   contents: write

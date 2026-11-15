@@ -6,7 +6,9 @@ Public catalog: <https://assets.leasemate.poc.singletonsd.com>
 on every push to `main`. The site root is the latest catalog. Each GitHub
 Release also publishes an immutable snapshot at `/releases/<tag>/` via
 `.github/workflows/snapshot.yml` (`release: published`, not tag push — the
-release commit is `chore(release): vX [skip ci]`). Omit `/dist` from URLs.
+release commit is `chore(release): vX [skip ci]`). Snapshot jobs never
+replace site root, including historical `workflow_dispatch` backfills.
+Omit `/dist` from URLs.
 
 ```text
 https://assets.leasemate.poc.singletonsd.com/png/leasemate-icon-dark-512.png

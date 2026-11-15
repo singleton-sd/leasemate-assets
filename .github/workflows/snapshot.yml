@@ -1,6 +1,8 @@
 # Immutable /releases/<tag>/ snapshot + GitHub Release archives.
 # Triggered by the GitHub Release that release-it opens — not by tag push —
 # because the release commit message contains `[skip ci]`.
+# Latest catalog (site root) is pages.yml from main — this job never
+# deploys a tagged dist there, including workflow_dispatch backfills.
 name: Publish version snapshot
 
 on:
@@ -16,6 +18,9 @@ on:
 concurrency:
   group: pages-publish
   cancel-in-progress: false
+  # Same group as pages.yml. queue: max keeps this snapshot pending instead
+  # of replacing it when another Pages run arrives while one is in progress.
+  queue: max
 
 permissions:
   contents: write
@@ -89,16 +94,8 @@ jobs:
             dist/manifest.json \
             --clobber
 
-      - name: Refresh latest catalog
-        uses: JamesIves/github-pages-deploy-action@d92aa235d04922e8f08b40ce78cc5442fcfbfa2f # v4.8.0
-        with:
-          branch: gh-pages
-          folder: dist
-          clean: true
-          clean-exclude: |
-            releases
-            CNAME
-
+      # Site root (latest catalog) is published from main by pages.yml.
+      # A tagged historical backfill must not deploy its dist to root.
       - name: Publish immutable version directory
         uses: JamesIves/github-pages-deploy-action@d92aa235d04922e8f08b40ce78cc5442fcfbfa2f # v4.8.0
         with:
