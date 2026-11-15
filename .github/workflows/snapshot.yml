@@ -3,6 +3,10 @@
 # because the release commit message contains `[skip ci]`.
 # Latest catalog (site root) is pages.yml from main — this job never
 # deploys a tagged dist there, including workflow_dispatch backfills.
+#
+# Build is unauthenticated (contents: read, no secrets). Publish mints the
+# singleton-release App token as its last setup step and uses it for
+# `gh release upload` and the gh-pages snapshot — never GITHUB_TOKEN.
 name: Publish version snapshot
 
 on:
@@ -23,14 +27,18 @@ concurrency:
   queue: max
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  snapshot:
+  build:
     if: "${{ github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false }}"
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    outputs:
+      version: ${{ steps.pkg.outputs.version }}
+      archive: ${{ steps.pkg.outputs.archive }}
+      tag: ${{ steps.pkg.outputs.tag }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -60,13 +68,11 @@ jobs:
           CI: "true"
 
       - name: Reject an existing version snapshot
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           version="$(node scripts/release-snapshot.mjs parse "$RELEASE_TAG")"
           status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
-            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header 'Accept: application/vnd.github+json' \
             --header 'X-GitHub-Api-Version: 2022-11-28' \
             "https://api.github.com/repos/${GITHUB_REPOSITORY}/contents/releases/${version}?ref=gh-pages")"
           node scripts/release-snapshot.mjs assert-absent "$status" "$RELEASE_TAG"
@@ -82,25 +88,64 @@ jobs:
           sha256sum "$archive" > "${archive}.sha256"
           echo "version=${version}" >> "$GITHUB_OUTPUT"
           echo "archive=${archive}" >> "$GITHUB_OUTPUT"
+          echo "tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
 
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: snapshot-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 1
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: snapshot-archives
+          path: |
+            ${{ steps.pkg.outputs.archive }}
+            ${{ steps.pkg.outputs.archive }}.sha256
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: snapshot-dist
+          path: dist
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: snapshot-archives
+          path: .
+      - uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app-token
+        with:
+          app-id: ${{ vars.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: singleton-sd
+          repositories: leasemate-assets
+          permission-contents: write
       - name: Attach archive, checksum, and manifest to the GitHub Release
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          RELEASE_TAG: ${{ needs.build.outputs.tag }}
+          ARCHIVE: ${{ needs.build.outputs.archive }}
         run: |
           set -euo pipefail
           gh release upload "$RELEASE_TAG" \
-            "${{ steps.pkg.outputs.archive }}" \
-            "${{ steps.pkg.outputs.archive }}.sha256" \
+            "$ARCHIVE" \
+            "$ARCHIVE.sha256" \
             dist/manifest.json \
             --clobber
-
       # Site root (latest catalog) is published from main by pages.yml.
       # A tagged historical backfill must not deploy its dist to root.
       - name: Publish immutable version directory
         uses: JamesIves/github-pages-deploy-action@d92aa235d04922e8f08b40ce78cc5442fcfbfa2f # v4.8.0
         with:
+          token: ${{ steps.app-token.outputs.token }}
           branch: gh-pages
           folder: dist
-          target-folder: releases/${{ steps.pkg.outputs.version }}
+          target-folder: releases/${{ needs.build.outputs.version }}
           clean: false
           force: false

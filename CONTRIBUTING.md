@@ -13,16 +13,17 @@ of releasing. The release workflow does that on merge to `main`.
 ## Releases
 
 On merge to `main` (or `workflow_dispatch`), `.github/workflows/release.yml`
-runs `pnpm release:ci` (release-it):
+splits prepare (no App token) from publish:
 
 1. Compute the next version from the latest `X.Y.Z` tag plus conventional
    commits. Git tags in this repo are unprefixed (`0.1.0`); GitHub Release
    titles use `vX.Y.Z`.
 2. Bump `package.json` and write `CHANGELOG.md`.
-3. Commit `chore(release): vX.Y.Z [skip ci]`, tag, and push to `main`.
+3. The publish job commits `chore(release): vX.Y.Z [skip ci]`, tags, and
+   pushes to `main` with the App token in `git extraheader` (not the origin URL).
 4. Publish `@singleton-sd/leasemate-assets` to npm via Trusted Publishing (OIDC).
    Do not add `NPM_TOKEN`.
-5. Create a GitHub Release with the generated notes.
+5. Create a GitHub Release with `gh release create`.
 6. `.github/workflows/snapshot.yml` runs on `release: published` (not tag
    push). It publishes an immutable `gh-pages` snapshot at
    `/releases/<tag>/`, refuses to overwrite that directory if it already
@@ -37,9 +38,10 @@ The git push uses the **singleton-release** GitHub App
 default-branch ruleset bypass list. Do not use `GITHUB_TOKEN` or a PAT for
 that push — `GITHUB_TOKEN` cannot bypass the CodeRabbit required ruleset
 (GH013). Checkout, `pnpm install`, and validate/test/build/sync stay
-unauthenticated. The App token is written into `GITHUB_TOKEN`/`GH_TOKEN` and
-the origin URL only for the release-it step, then origin is reset. npm
-publish uses `--ignore-scripts` so `prepublishOnly` does not re-run.
+unauthenticated in the prepare job. The App token is minted last in the
+publish job (no install, no repo scripts) and used only via `git extraheader`,
+`gh`, and npm OIDC. npm publish uses `--ignore-scripts` so `prepublishOnly`
+does not re-run.
 
 The job is skipped when the head commit message starts with `chore(release):`,
 so the release commit does not loop.

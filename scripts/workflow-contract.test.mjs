@@ -8,6 +8,7 @@ import {
   parseWorkflowConcurrency,
   pendingRuns,
 } from "./pages-publish-concurrency.mjs";
+import releaseIt from "../.release-it.js";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const PAGES = join(ROOT, ".github/workflows/pages.yml");
@@ -15,6 +16,22 @@ const SNAPSHOT = join(ROOT, ".github/workflows/snapshot.yml");
 const RELEASE = join(ROOT, ".github/workflows/release.yml");
 
 const BOT_URL = "https://example.invalid/users/singleton-release[bot]";
+
+/**
+ * @param {string} yaml
+ * @returns {Record<string, string>}
+ */
+function jobBlocks(yaml) {
+  const after = yaml.split(/\njobs:\n/)[1];
+  if (!after) throw new Error("workflow has no jobs:");
+  /** @type {Record<string, string>} */
+  const jobs = {};
+  for (const block of after.split(/\n(?=  [a-zA-Z0-9_-]+:)/)) {
+    const name = block.match(/^  ([a-zA-Z0-9_-]+):/)?.[1];
+    if (name) jobs[name] = block;
+  }
+  return jobs;
+}
 
 test("pages.yml and snapshot.yml share pages-publish with queue: max", async () => {
   const pages = parseWorkflowConcurrency(await readFile(PAGES, "utf8"));
@@ -46,7 +63,7 @@ test("snapshot.yml never deploys a tagged dist to Pages root", async () => {
   assert.match(yaml, /workflow_dispatch:/);
   assert.match(
     yaml,
-    /target-folder:\s+releases\/\$\{\{\s*steps\.pkg\.outputs\.version\s*\}\}/,
+    /target-folder:\s+releases\/\$\{\{\s*needs\.build\.outputs\.version\s*\}\}/,
   );
   assert.doesNotMatch(yaml, /name:\s+Refresh latest catalog/);
   const deploys = [
@@ -64,10 +81,73 @@ test("snapshot.yml never deploys a tagged dist to Pages root", async () => {
   }
 });
 
+test("pages.yml and snapshot.yml mint the App token only in publish", async () => {
+  for (const file of [PAGES, SNAPSHOT]) {
+    const yaml = await readFile(file, "utf8");
+    assert.match(yaml, /^permissions:\n  contents: read\s*$/m);
+    const jobs = jobBlocks(yaml);
+    assert.ok(jobs.build, `${file} missing build job`);
+    assert.ok(jobs.publish, `${file} missing publish job`);
+    assert.match(jobs.build, /pnpm install/);
+    assert.doesNotMatch(jobs.build, /create-github-app-token/);
+    assert.doesNotMatch(jobs.build, /github\.token/);
+    assert.match(jobs.publish, /create-github-app-token/);
+    assert.match(
+      jobs.publish,
+      /token: \$\{\{ steps\.app-token\.outputs\.token \}\}/,
+    );
+    assert.doesNotMatch(jobs.publish, /pnpm install/);
+    assert.doesNotMatch(jobs.publish, /node scripts\//);
+    assert.doesNotMatch(jobs.publish, /github\.token/);
+    assert.doesNotMatch(jobs.publish, /GITHUB_TOKEN/);
+  }
+});
+
+test("snapshot.yml passes the archive to gh via env, not interpolation", async () => {
+  const yaml = await readFile(SNAPSHOT, "utf8");
+  const jobs = jobBlocks(yaml);
+  assert.match(
+    jobs.publish,
+    /ARCHIVE: \$\{\{ needs\.build\.outputs\.archive \}\}/,
+  );
+  assert.match(
+    jobs.publish,
+    /GH_TOKEN: \$\{\{ steps\.app-token\.outputs\.token \}\}/,
+  );
+  assert.doesNotMatch(jobs.publish, /steps\.pkg\.outputs\.archive/);
+});
+
+test("release.yml splits prepare from publish and never embeds the token in origin", async () => {
+  const yaml = await readFile(RELEASE, "utf8");
+  assert.match(yaml, /^  contents: read/m);
+  const jobs = jobBlocks(yaml);
+  assert.match(jobs.prepare, /pnpm install/);
+  assert.doesNotMatch(jobs.prepare, /create-github-app-token/);
+  assert.doesNotMatch(jobs.prepare, /RELEASE_APP_PRIVATE_KEY/);
+  assert.match(jobs.publish, /create-github-app-token/);
+  assert.doesNotMatch(jobs.publish, /pnpm install/);
+  assert.doesNotMatch(jobs.publish, /pnpm (validate|test|build|release)/);
+  assert.doesNotMatch(yaml, /x-access-token:\$\{/);
+  assert.match(
+    yaml,
+    /http\.https:\/\/github\.com\/\.extraheader=AUTHORIZATION: basic/,
+  );
+  assert.match(yaml, /::add-mask::/);
+  assert.match(jobs.publish, /GH_TOKEN: \$\{\{ steps\.app-token\.outputs\.token \}\}/);
+  assert.doesNotMatch(jobs.publish, /GITHUB_TOKEN: \$\{\{ steps\.app-token/);
+});
+
+test("release-it commits and pushes with --no-verify", () => {
+  assert.ok(releaseIt.git.commitArgs.includes("--no-verify"));
+  assert.ok(releaseIt.git.pushArgs.includes("--no-verify"));
+  assert.ok(releaseIt.git.pushArgs.includes("--follow-tags"));
+  assert.ok(releaseIt.git.pushArgs.includes("--atomic"));
+});
+
 test("release.yml bot lookup disables curl globbing for [bot]", async () => {
   const yaml = await readFile(RELEASE, "utf8");
   assert.match(yaml, /curl[^\n]*--globoff/);
-  assert.match(yaml, /\$\{APP_SLUG\}\[bot\]/);
+  assert.match(yaml, /singleton-release\[bot\]/);
 
   const globOn = spawnSync(
     "curl",

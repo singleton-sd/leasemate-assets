@@ -41,12 +41,12 @@ pnpm build
 ```
 
 CI must leave `src/` and `svg/` unchanged (`git diff` clean after build).
-Releases (`pnpm release:ci` via `.github/workflows/release.yml`) commit the
-version bump and `CHANGELOG.md` to `main` using the **singleton-release**
-GitHub App (`vars.RELEASE_APP_ID` + `secrets.RELEASE_APP_PRIVATE_KEY`) so
-the push can bypass the CodeRabbit required ruleset. Do not use
-`GITHUB_TOKEN` or a PAT for that push. Do not add `NPM_TOKEN` (OIDC Trusted
-Publishing). See [CONTRIBUTING.md](CONTRIBUTING.md).
+Releases (`.github/workflows/release.yml`) bump in a read-only prepare job,
+then mint the **singleton-release** GitHub App token last in publish
+(`vars.RELEASE_APP_ID` + `secrets.RELEASE_APP_PRIVATE_KEY`) so the push can
+bypass the CodeRabbit required ruleset. Do not use `GITHUB_TOKEN` or a PAT
+for that push, and do not put the token in the origin URL. Do not add
+`NPM_TOKEN` (OIDC Trusted Publishing). See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Related
 

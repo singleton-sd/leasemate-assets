@@ -47,7 +47,8 @@ Pages CDN is primary for HTML consumers. The `gh-pages` branch serves the
 latest catalog at site root and an immutable `/releases/<tag>/` snapshot for
 each GitHub Release (triggered on `release: published`, not tag push).
 `@singleton-sd/leasemate-assets` publishes via GitHub Actions Trusted
-Publishing (OIDC) — `.github/workflows/release.yml` / `pnpm release:ci`. The
-git push uses the singleton-release GitHub App (`vars.RELEASE_APP_ID` +
-`secrets.RELEASE_APP_PRIVATE_KEY`). Do not use `GITHUB_TOKEN` or a PAT for
-that push. Do not add `NPM_TOKEN`.
+Publishing (OIDC) — `.github/workflows/release.yml`. The git push uses the
+singleton-release GitHub App (`vars.RELEASE_APP_ID` +
+`secrets.RELEASE_APP_PRIVATE_KEY`) via `git extraheader`, never
+`GITHUB_TOKEN` or a PAT, and never a token in the origin URL. Do not add
+`NPM_TOKEN`.
