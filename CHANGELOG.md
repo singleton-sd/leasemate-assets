@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.2.1](https://github.com/singleton-sd/leasemate-assets/compare/0.2.0...0.2.1) (2026-11-15)
+
 ## 0.2.0 (2026-11-15)
 
 ### Features
